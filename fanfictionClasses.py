@@ -24,6 +24,40 @@ class Story():
             idstring = urlString[urlString.index("  by <a href=\"/u/"):urlString.index("\">", urlString.index("  by <a href="))]
             self.authorID = int(idstring.split("/")[2])
         
+        
+        try:
+            self.rating = {"Rated: K":0, "Rated: K+":1, "Rated: T":2, "Rated: M":3}[soup.text[soup.text.rfind("Rated: "):soup.text.index(" -", soup.text.rfind("Rated: "))]]
+        except Exception as e:
+            print "WTF", soup.text[soup.text.rfind("Rated: "):soup.text.rfind(" -", soup.text.rfind("Rated: "))]
+        
+        #tags:
+        check = soup.text.rfind("- ")
+        cutting = soup.text[check:]
+        cutting.strip()
+        while "Complete" in cutting:
+            cutting = soup.text[:check]
+            check = cutting.rfind("- ")
+            cutting = cutting[check:]
+            cutting.strip()
+        cutting = cutting[2:]
+        if "Published" in cutting or "Updated" in cutting: self.tags = ["None"]
+        else:
+            cutting = cutting.replace("]", "],")
+            if "[" not in cutting:
+                self.tags = [x.strip() for x in cutting.split(",")]
+            else:
+                pairings = []
+                while ("[") in cutting:
+                    pairings.append(cutting[cutting.index("["):cutting.index("]")+1])
+                    cutting = cutting[:cutting.index("[")] + cutting[cutting.index("]")+1:]
+                self.tags = [x.strip() for x in cutting.split(",")]
+                self.tags.extend(pairings)
+                pairings = [x.split(",") for x in pairings]
+                pairings = [x.replace("[", "").replace("]", "") for y in pairings for x in y]
+                self.tags.extend(pairings)
+            self.tags = [x for x in self.tags if x != ""]
+               
+        
     def __repr__(self):
         return "%s, %d: %s by %s" % (self.ID, self.authorID, self.title, self.author) if self.author is not None else "%s: %s" % (self.ID, self.title,)
         

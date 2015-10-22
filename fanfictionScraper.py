@@ -26,7 +26,7 @@ class scrapeThread(threading.Thread):
                     #time.sleep(2)
         except Exception as e:
             with open("output.txt", "a") as fp:
-                fp.write("Thread %d did not complete with exception %s" % (self.startnumber, str(e)))
+                fp.write("Thread %d did not complete with exception %s\n\n" % (self.startnumber, str(e)))
         
 class workerThread(threading.Thread):
     def __init__(self):
@@ -40,7 +40,8 @@ class workerThread(threading.Thread):
                 c.execute("CREATE TABLE authors (name string, id int PRIMARY KEY)")
                 c.execute("CREATE TABLE author_favorites (authorID int, storyID int)")
                 c.execute("CREATE TABLE author_written (authorID int, storyID int)")
-                c.execute("CREATE TABLE stories (id int PRIMARY KEY, authorID int, name string, wordcount int, published int, updated int, reviews int, chapters int, completed boolean, category string, summary string)")
+                c.execute("CREATE TABLE stories (id int PRIMARY KEY, authorID int, name string, wordcount int, published int, updated int, reviews int, chapters int, completed boolean, category string, rate int, summary string)")
+                c.execute("CREATE TABLE story_tags (storyid int, tag string)")
             except Exception as e:
                 print "Tables already exist"
             #should add tags, rating, should also probably add reviews
@@ -60,7 +61,8 @@ class workerThread(threading.Thread):
                     for key in authorlist.keys():
                         curr = authorlist[key]
                         try:
-                            c.execute("INSERT INTO stories VALUES (?,?,?,?,?,?,?,?,?,?,?)", (curr.ID, curr.authorID, curr.title, curr.wordcount, curr.published, curr.updated, curr.reviews, curr.chapters, 1 if curr.completed else 0, curr.category, curr.summary))
+                            c.execute("INSERT INTO stories VALUES (?,?,?,?,?,?,?,?,?,?,?,?)", (curr.ID, curr.authorID, curr.title, curr.wordcount, curr.published, curr.updated, curr.reviews, curr.chapters, 1 if curr.completed else 0, curr.category, curr.rating, curr.summary))
+                            c.executemany("INSERT INTO story_tags VALUES (?,?)", [(curr.ID, x) for x in curr.tags])
                         except Exception as e:
                             print "Something broke with story %s" % curr, e
                 print "Processed %s" % author
@@ -79,7 +81,7 @@ perthread = 100000
 queue = Queue(5000)
 workingThread = workerThread()
 workingThread.start()
-for i in range(0, 7000000000, perthread):
+for i in range(0, 7000000, perthread):
     addThread = scrapeThread(i, perthread)
     threads.append(addThread)
     
