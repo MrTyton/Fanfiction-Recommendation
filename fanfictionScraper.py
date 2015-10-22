@@ -7,6 +7,7 @@ from os.path import isfile
 from Queue import Queue
 import sys
 import sqlite3
+from time import sleep
 authors = {}
 
 class scrapeThread(threading.Thread):
@@ -16,17 +17,13 @@ class scrapeThread(threading.Thread):
         self.endnumber = startnumber + perthread
         
     def run(self):
-        if isfile("./results/authors-%d.pkl" % self.startnumber): return
-        threadAuthor = {}
         try:
             for i in range(self.startnumber, self.endnumber):
                 insertion = scrapePage("https://www.fanfiction.net/u/%d" % i, i)
                 if insertion is not None:
-                    threadAuthor[i] = insertion
+                    queue.put(insertion)
                     print "Added %d, %s" % (i, insertion.name)
                     #time.sleep(2)
-            with open("./results/authors-%d.pkl" % self.startnumber, "w") as fp:
-                pickle.dump(threadAuthor, fp)
         except Exception as e:
             with open("output.txt", "a") as fp:
                 fp.write("Thread %d did not complete with exception %s" % (self.startnumber, str(e)))
@@ -35,43 +32,50 @@ class workerThread(threading.Thread):
     def __init__(self):
         threading.Thread.__init__(self)
         
+        
     def run(self):
-        with sqlite3.connect("StoryGraph.db") as conn:
+        with sqlite3.connect("fanfiction.db") as conn:
             c = conn.cursor()
-            c.execute("CREATE TABLE authors (name string, id PRIMARY KEY int)")
-            c.execute("CREATE TABLE author_favorites (authorID int, storyID int")
-            c.execute("CREATE TABLE author_written (authorID int, storyID int")
-            c.execute("CREATE TABLE stories (id PRIMARY KEY int, authorID int, name string, wordcount int, published int, updated int, reviews int, chapters int, completed boolean, category string, summary string)")
+            c.execute("CREATE TABLE authors (name string, id int PRIMARY KEY)")
+            c.execute("CREATE TABLE author_favorites (authorID int, storyID int)")
+            c.execute("CREATE TABLE author_written (authorID int, storyID int)")
+            c.execute("CREATE TABLE stories (id int PRIMARY KEY, authorID int, name string, wordcount int, published int, updated int, reviews int, chapters int, completed boolean, category string, summary string)")
             #should add tags, rating, should also probably add reviews
             conn.commit()
             count = 0
             while True:
                 author = queue.get()
-                count += 1
-                c.execute("INSERT INTO authors VALUES (?, ?)", (author.name, author.id))
+                try:
+                    c.execute("INSERT INTO authors VALUES (?, ?)", (author.name, author.id))
+                except Exception as e:
+                    print "Something broke with %s" % author
+                    queue.task_done()
+                    continue
                 c.executemany("INSERT INTO author_favorites VALUES (?, ?)", [(author.id, x) for x in author.favorites])
                 c.executemany("INSERT INTO author_written VALUES (?, ?)", [(author.id, x) for x in author.stories])
                 for key in author.stories:
                     curr = author.stories[key]
                     try:
-                        c.execute("INSERT INTO stories VALUES (?,?,?,?,?,?,?,?,?,?,?)", (curr.ID, curr.authorID, curr.published, curr.updated, curr.reviews, curr.chapters, 1 if curr.completed else 0, curr.category, curr.summary))
+                        c.execute("INSERT INTO stories VALUES (?,?,?,?,?,?,?,?,?,?,?)", (curr.ID, curr.authorID, curr.title, curr.wordcount, curr.published, curr.updated, curr.reviews, curr.chapters, 1 if curr.completed else 0, curr.category, curr.summary))
                     except Exception as e:
-                        print "Something broke with story %s" % curr
-                if count == 5000:
+                        print "Something broke with story %s" % curr, e
+                print "Processed %s" % author
+                if queue.empty():
                     conn.commit()
-                    count = 0
                 queue.task_done()
+                if queue.empty():
+                    sleep(60)
         
         
 
 #total number: 7077300, 3200
 #threadLock = threading.Lock()
 threads = []
-perthread = 1000
-queue = Queue(5000)
+perthread = 100
+queue = Queue(200)
 workingThread = workerThread()
 workingThread.start()
-for i in range(0, 100000, perthread):
+for i in range(2218700, 2219700, perthread):
     addThread = scrapeThread(i, perthread)
     threads.append(addThread)
 for curThread in threads:
@@ -80,7 +84,8 @@ for curThread in threads:
 for curThread in threads:
     curThread.join()
 queue.join()
-print "Done"    
+print "Done"
+sys.exit()    
 
 #timer = SimpleProgress(100000-16000)
 #timer.start_progress()

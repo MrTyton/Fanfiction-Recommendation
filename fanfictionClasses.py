@@ -6,7 +6,7 @@ class Story():
         divpointer = soup.div
         self.category = divpointer['data-category']
         self.ID = int(divpointer['data-storyid'])
-        self.title = divpointer['data-title']
+        self.title = divpointer['data-title'].strip()
         self.wordcount = int(divpointer['data-wordcount'])
         self.published = int(divpointer['data-datesubmit'])
         self.updated = int(divpointer['data-dateupdate'])
