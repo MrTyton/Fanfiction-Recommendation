@@ -33,35 +33,45 @@ def scrapePage(page_URL, id):
     if numWritten == 0 and numFavorite == 0: return None
     
     authorfind = """<span style="font-weight:bold;letter-spacing:1px;font-size:18px;font-family:'Georgia','Times New Roman','Times', Sans-serif;">"""
-    authorName = page[page.index(authorfind)+len(authorfind)+1:page.find("</span>", page.index(authorfind))]
+    authfindindex = page.index(authorfind)
+    authorName = page[authfindindex+len(authorfind)+1:page.find("</span>", authfindindex)]
     
     
     author = Author(id, authorName)
     
     prevIndex = 0
+    
+    index = page.index
+    
+    a_s = author.add_story
+    a_f = author.add_favorite
+    
     for i in range(numWritten):
-        start = page.index(writtenStart, prevIndex)
-        end = page.index(endString, start)
+        start = index(writtenStart, prevIndex)
+        end = index(endString, start)
         prevIndex = end
         exert = page[start:end]
         exert = exert.replace("<>", "")
-        datatitles = exert[exert.index("data-title"):exert.index("data-wordcount")]
-        datatitles = datatitles.replace("<", "").replace(">", "").replace("\"", "").replace("data-title=", "data-title=\"") +"\""
-        exert = exert[:exert.index("data-title"):] + datatitles + exert[exert.index("data-wordcount"):]
-        author.add_story(Story(exert))
+        a = exert.index("data-title")
+        b = exert.index("data-wordcount")
+        datatitles = exert[a:b]
+        datatitles = "%s\"" % datatitles.replace("<", "").replace(">", "").replace("\"", "").replace("data-title=", "data-title=\"")
+        exert = "%s%s%s" % (exert[:a],datatitles,exert[b:])
+        a_s(Story(exert))
         
     prevIndex = 0
     for i in range(numFavorite):
-        start = page.index(favoriteStart, prevIndex)
-        end = page.index(endString, start)
+        start = index(favoriteStart, prevIndex)
+        end = index(endString, start)
         prevIndex = end
         exert = page[start:end]
-        exert = exert.replace("<>", "")
-        exert = exert.replace("\"\"", "\"")
-        datatitles = exert[exert.index("data-title"):exert.index("data-wordcount")]
-        datatitles = datatitles.replace("<", "").replace(">", "").replace("\"", "").replace("data-title=", "data-title=\"") +"\""
-        exert = exert[:exert.index("data-title"):] + datatitles + exert[exert.index("data-wordcount"):]
-        author.add_favorite(Story(exert))
+        exert = exert.replace("<>", "").replace("\"\"", "\"")
+        a = exert.index("data-title")
+        b = exert.index("data-wordcount")
+        datatitles = exert[a:b]
+        datatitles = "%s\"" % datatitles.replace("<", "").replace(">", "").replace("\"", "").replace("data-title=", "data-title=\"")
+        exert = "%s%s%s" % (exert[:a],datatitles,exert[b:])
+        a_f(Story(exert, False))
     
         
     return author

@@ -1,11 +1,13 @@
 from BeautifulSoup import BeautifulSoup
 
 class Story():
-    def __init__(self, urlString):
+    def __init__(self, urlString, full=True):
         soup = BeautifulSoup(urlString)
         divpointer = soup.div
-        self.category = divpointer['data-category']
         self.ID = int(divpointer['data-storyid'])
+        if not full:
+            return
+        self.category = divpointer['data-category']
         self.title = divpointer['data-title'].strip()
         self.wordcount = int(divpointer['data-wordcount'])
         self.published = int(divpointer['data-datesubmit'])
@@ -14,10 +16,11 @@ class Story():
         self.chapters = int(divpointer['data-chapters'])
         self.completed = True if divpointer['data-statusid'] == '2' else False
         self.url = soup.a['href']
-        if self.category + " - " in soup.text:
-            self.summary = soup.text[:soup.text.index(self.category + " - ")]
+        loc = soup.text.rfind("Rated: ")
+        if "%s - " % self.category in soup.text:
+            self.summary = soup.text[:soup.text.index("%s - " % self.category)]
         else:
-            self.summary = soup.text[:soup.text.index("Rated: ")]
+            self.summary = soup.text[:loc]
         if "  by <a href=" in urlString:
             authorstring = urlString[urlString.index("  by <a href="):urlString.index("</a>", urlString.index("  by <a href="))]
             self.author = authorstring[authorstring.index(">")+1:]
@@ -25,20 +28,16 @@ class Story():
             self.authorID = int(idstring.split("/")[2])
         
         
-        try:
-            self.rating = {"Rated: K":0, "Rated: K+":1, "Rated: T":2, "Rated: M":3}[soup.text[soup.text.rfind("Rated: "):soup.text.index(" -", soup.text.rfind("Rated: "))]]
-        except Exception as e:
-            print "WTF", soup.text[soup.text.rfind("Rated: "):soup.text.rfind(" -", soup.text.rfind("Rated: "))]
+        loc = soup.text.rfind("Rated: ")
+        self.rating = {"Rated: K":0, "Rated: K+":1, "Rated: T":2, "Rated: M":3}[soup.text[loc:soup.text.index(" -", loc)]]
         
-        #tags:
         check = soup.text.rfind("- ")
         cutting = soup.text[check:]
-        cutting.strip()
         while "Complete" in cutting:
             cutting = soup.text[:check]
             check = cutting.rfind("- ")
             cutting = cutting[check:]
-            cutting.strip()
+        cutting.strip()
         cutting = cutting[2:]
         if "Published" in cutting or "Updated" in cutting: self.tags = ["None"]
         else:
@@ -48,17 +47,21 @@ class Story():
             else:
                 pairings = []
                 while ("[") in cutting:
-                    pairings.append(cutting[cutting.index("["):cutting.index("]")+1])
-                    cutting = cutting[:cutting.index("[")] + cutting[cutting.index("]")+1:]
+                    a = cutting.index("[")
+                    b = cutting.index("]")
+                    insert = cutting[a:b+1]
+                    pairings.append(insert)
+                    cutting = cutting.replace(insert, "")
                 self.tags = [x.strip() for x in cutting.split(",")]
                 self.tags.extend(pairings)
                 pairings = [x.split(",") for x in pairings]
-                pairings = [x.replace("[", "").replace("]", "") for y in pairings for x in y]
+                pairings = [x[1:-1] for y in pairings for x in y]
                 self.tags.extend(pairings)
             self.tags = [x for x in self.tags if x != ""]
                
         
     def __repr__(self):
+        if self.title is None: return "Story ID: %d" % self.ID
         return "%s, %d: %s by %s" % (self.ID, self.authorID, self.title, self.author) if self.author is not None else "%s: %s" % (self.ID, self.title,)
         
 class Author():

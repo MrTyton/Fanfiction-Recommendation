@@ -15,18 +15,35 @@ class scrapeThread(threading.Thread):
         threading.Thread.__init__(self)
         self.startnumber = startnumber
         self.endnumber = startnumber + perthread
+        with sqlite3.connect("fanfiction.db") as conn:
+            c = conn.cursor()
+            try:
+                c.execute("SELECT id FROM authors")
+                temp = c.fetchall()
+                temp = sorted([x for y in temp for x in y])
+                temp = [x for x in temp if x < self.endnumber and x > self.startnumber]
+                if temp != []:
+                    self.startnumber = max(temp)+1
+                print "Starting from %d" % self.startnumber
+            except Exception as e:
+                print "Something broke: ", e
         
     def run(self):
+        fault = 0
         try:
             for i in range(self.startnumber, self.endnumber):
+                fault = i
+                #print i
                 insertion = scrapePage("https://www.fanfiction.net/u/%d" % i, i)
+                #print insertion
                 if insertion is not None:
                     queue.put(insertion)
                     print "Added %d, %s" % (i, insertion.name)
                     #time.sleep(2)
         except Exception as e:
             with open("output.txt", "a") as fp:
-                fp.write("Thread %d did not complete with exception %s\n\n" % (self.startnumber, str(e)))
+                fp.write("Thread %d on item %d did not complete with exception %s\n\n" % (self.startnumber, fault, str(e)))
+        print "Exiting thread %d" % self.startnumber
         
 class workerThread(threading.Thread):
     def __init__(self):
@@ -51,20 +68,20 @@ class workerThread(threading.Thread):
                 author = queue.get()
                 try:
                     c.execute("INSERT INTO authors VALUES (?, ?)", (author.name, author.id))
+                    c.executemany("INSERT INTO author_favorites VALUES (?, ?)", [(author.id, x) for x in author.favorites])
+                    c.executemany("INSERT INTO author_written VALUES (?, ?)", [(author.id, x) for x in author.stories])
+                    for authorlist in (author.stories,):#, author.favorites):
+                        for key in authorlist.keys():
+                            curr = authorlist[key]
+                            try:
+                                c.execute("INSERT INTO stories VALUES (?,?,?,?,?,?,?,?,?,?,?,?)", (curr.ID, curr.authorID, curr.title, curr.wordcount, curr.published, curr.updated, curr.reviews, curr.chapters, 1 if curr.completed else 0, curr.category, curr.rating, curr.summary))
+                                if curr.tags != ["None"]:
+                                    c.executemany("INSERT INTO story_tags VALUES (?,?)", [(curr.ID, x) for x in curr.tags])
+                            except Exception as ez:
+                                print "Something broke with story %s" % curr, ez
                 except Exception as e:
-                    print "Something broke with %s" % author
-                    queue.task_done()
-                    continue
-                c.executemany("INSERT INTO author_favorites VALUES (?, ?)", [(author.id, x) for x in author.favorites])
-                c.executemany("INSERT INTO author_written VALUES (?, ?)", [(author.id, x) for x in author.stories])
-                for authorlist in (author.stories, author.favorites):
-                    for key in authorlist.keys():
-                        curr = authorlist[key]
-                        try:
-                            c.execute("INSERT INTO stories VALUES (?,?,?,?,?,?,?,?,?,?,?,?)", (curr.ID, curr.authorID, curr.title, curr.wordcount, curr.published, curr.updated, curr.reviews, curr.chapters, 1 if curr.completed else 0, curr.category, curr.rating, curr.summary))
-                            c.executemany("INSERT INTO story_tags VALUES (?,?)", [(curr.ID, x) for x in curr.tags])
-                        except Exception as e:
-                            print "Something broke with story %s" % curr, e
+                    print "Something broke with author %s" % author
+                
                 print "Processed %s" % author
                 if queue.empty():
                     conn.commit()
@@ -77,11 +94,11 @@ class workerThread(threading.Thread):
 #total number: 7077300, 3200
 #threadLock = threading.Lock()
 threads = []
-perthread = 100000
+perthread = 250000
 queue = Queue(5000)
 workingThread = workerThread()
 workingThread.start()
-for i in range(0, 7000000, perthread):
+for i in range(1000000, 2000000, perthread):
     addThread = scrapeThread(i, perthread)
     threads.append(addThread)
     
@@ -91,32 +108,8 @@ for curThread in threads:
     
 for curThread in threads:
     curThread.join()
-queue.join()
 print "Done, took %d seconds" % (time() - starttime)
+queue.join()
 sys.exit(1)    
 
-#timer = SimpleProgress(100000-16000)
-#timer.start_progress()
-"""for i in range(20000, 21000):
-    if i % 100 == 0:
-        with open("authors.pkl", "r") as fp:
-            updator = pickle.load(fp)
-        updator.update(authors)
-        with open("authors.pkl", "w") as fp:
-            pickle.dump(updator, fp)
-        authors = {}    
-    insertion = scrapePage("https://www.fanfiction.net/u/%d" % i, i)
-    if insertion is not None:
-        authors[i] = insertion
-        print "Added %d, %s" % (i, insertion.name)
-    else:
-        continue
-    #time.sleep(2)
 
-with open("authors.pkl", "r") as fp:
-    updator = pickle.load(fp)
-updator.update(authors)
-with open("authors.pkl", "w") as fp:
-    pickle.dump(updator, fp)
-authors = {}     
-"""
