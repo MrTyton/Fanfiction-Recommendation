@@ -1,13 +1,16 @@
 import urllib2
 from .fanfictionClasses import *
 import chardet
+from time import sleep
 
 def scrapePage(page_URL, id):
     req = urllib2.Request(page_URL)
-    try:
-        response = urllib2.urlopen(req)
-    except:
-        return None
+    for i in range(3):
+        try:
+            response = urllib2.urlopen(req, timeout=10)
+        except:
+            if i == 2: return None
+            sleep(10)
     if response.getcode() == 200:
         try:
             page = response.read()

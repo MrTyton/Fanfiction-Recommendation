@@ -29,10 +29,8 @@ class scrapeThread(threading.Thread):
                 print "Something broke: ", e
         
     def run(self):
-        fault = 0
-        try:
-            for i in range(self.startnumber, self.endnumber):
-                fault = i
+        for i in range(self.startnumber, self.endnumber):
+            try:
                 #print i
                 insertion = scrapePage("https://www.fanfiction.net/u/%d" % i, i)
                 #print insertion
@@ -40,9 +38,9 @@ class scrapeThread(threading.Thread):
                     queue.put(insertion)
                     print "Added %d, %s" % (i, insertion.name)
                     #time.sleep(2)
-        except Exception as e:
-            with open("output.txt", "a") as fp:
-                fp.write("Thread %d on item %d did not complete with exception %s\n\n" % (self.startnumber, fault, str(e)))
+            except Exception as e:
+                with open("output.txt", "a") as fp:
+                    fp.write("Thread %d on item %d broke, with exception: %s\n\n" % (self.startnumber, i, str(e)))
         print "Exiting thread %d" % self.startnumber
         
 class workerThread(threading.Thread):
@@ -98,7 +96,7 @@ perthread = 250000
 queue = Queue(5000)
 workingThread = workerThread()
 workingThread.start()
-for i in range(1000000, 2000000, perthread):
+for i in range(3000000, 4000000, perthread):
     addThread = scrapeThread(i, perthread)
     threads.append(addThread)
     
@@ -108,8 +106,8 @@ for curThread in threads:
     
 for curThread in threads:
     curThread.join()
-print "Done, took %d seconds" % (time() - starttime)
 queue.join()
+print "Done, took %d seconds" % (time() - starttime)
 sys.exit(1)    
 
 
