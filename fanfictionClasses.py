@@ -30,6 +30,8 @@ class Story():
         
         loc = soup.text.rfind("Rated: ")
         self.rating = {"Rated: K":0, "Rated: K+":1, "Rated: T":2, "Rated: M":3}[soup.text[loc:soup.text.index(" -", loc)]]
+        loc = soup.text.find(" - ", loc)
+        self.language = soup.text[loc+3:soup.text.find("-", loc+3)].strip()
         
         check = soup.text.rfind("- ")
         cutting = soup.text[check:]
@@ -81,3 +83,12 @@ class Author():
         
     def __repr__(self):
         return "%s, %s with %d written stories and %d favorites" % (self.name, self.id, len(self.stories), len(self.favorites))
+    
+class Review():
+    def __init__(self, exert):
+        soup = BeautifulSoup(exert)
+        loc = exert.find('a href="/u/') 
+        self.user = exert[loc + 12 : exert.find("/", loc+12)]
+        loc = exert.find("<small", loc+12)
+        self.chapter = exert[loc+34: exert.find(" ", loc+34)]
+        self.review = soup.div.text

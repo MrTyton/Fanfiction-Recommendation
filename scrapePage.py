@@ -2,6 +2,7 @@ import urllib2
 from .fanfictionClasses import *
 import chardet
 from time import sleep
+from BeautifulSoup import BeautifulSoup
 
 def scrapePage(page_URL, id):
     req = urllib2.Request(page_URL)
@@ -78,4 +79,63 @@ def scrapePage(page_URL, id):
     
         
     return author
+
+def openReviewPage(url):
+    req = urllib2.Request(url)
+    for i in range(3):
+        try:
+            response = urllib2.urlopen(req, timeout=10)
+        except:
+            if i == 2: return None
+            sleep(10)
+    if response.getcode() == 200:
+        try:
+            page = response.read()
+            encoding = chardet.detect(page)
+            page = page.decode(encoding['encoding'], errors='ignore')
+            page = page.encode("ascii", errors='ignore')
+        except:
+            print "Excepted"
+            response.close()
+            return None
+        if page.find("Story not found.") != -1 and page.find("No Reviews found.") != -1:
+            print "Nothing here"
+            response.close()
+            return None
+    else:
+        print "Response code fuckup"
+        response.close()        
+        return None
+    response.close()
+    return page
+
+def scrapeReview(storyID):
+    reviews = []
+    
+    page = openReviewPage("http://www.fanfiction.net/r/%d/0/1" % storyID)
+    
+    if page == None: return None
+    
+    check = page.find("/'>Last</a>")
+    if check != -1:
+        totalPages = int(page[page.rfind("/", 0, check)+1:check])
+    else:
+        totalPages = 1
+    print totalPages
+    for q in range(totalPages):
+        page = openReviewPage("http://www.fanfiction.net/r/%d/0/%d" % (storyID, q+1))
         
+        numReviews = page.count("<tr>")
+        end = page.find("id='gui_table1i'")
+        end = page.find("tbody", end)
+        print end
+        for i in range(numReviews):
+            start = page.find("<tr>", end)
+            end = page.find("</tr>", start)
+            print start
+            print end
+            exert = page[start:end]
+            print exert
+            reviews.append(Review(exert))
+        
+    

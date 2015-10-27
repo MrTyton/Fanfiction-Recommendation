@@ -55,7 +55,7 @@ class workerThread(threading.Thread):
                 c.execute("CREATE TABLE authors (name string, id int PRIMARY KEY)")
                 c.execute("CREATE TABLE author_favorites (authorID int, storyID int)")
                 c.execute("CREATE TABLE author_written (authorID int, storyID int)")
-                c.execute("CREATE TABLE stories (id int PRIMARY KEY, authorID int, name string, wordcount int, published int, updated int, reviews int, chapters int, completed boolean, category string, rate int, summary string)")
+                c.execute("CREATE TABLE stories (id int PRIMARY KEY, authorID int, name string, wordcount int, published int, updated int, reviews int, chapters int, completed boolean, category string, rate int, language string, summary string)")
                 c.execute("CREATE TABLE story_tags (storyid int, tag string)")
             except Exception as e:
                 print "Tables already exist"
@@ -72,7 +72,7 @@ class workerThread(threading.Thread):
                         for key in authorlist.keys():
                             curr = authorlist[key]
                             try:
-                                c.execute("INSERT INTO stories VALUES (?,?,?,?,?,?,?,?,?,?,?,?)", (curr.ID, curr.authorID, curr.title, curr.wordcount, curr.published, curr.updated, curr.reviews, curr.chapters, 1 if curr.completed else 0, curr.category, curr.rating, curr.summary))
+                                c.execute("INSERT INTO stories VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)", (curr.ID, curr.authorID, curr.title, curr.wordcount, curr.published, curr.updated, curr.reviews, curr.chapters, 1 if curr.completed else 0, curr.category, curr.rating, curr.language, curr.summary))
                                 if curr.tags != ["None"]:
                                     c.executemany("INSERT INTO story_tags VALUES (?,?)", [(curr.ID, x) for x in curr.tags])
                             except Exception as ez:
