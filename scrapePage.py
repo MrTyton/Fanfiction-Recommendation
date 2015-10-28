@@ -121,21 +121,27 @@ def scrapeReview(storyID):
         totalPages = int(page[page.rfind("/", 0, check)+1:check])
     else:
         totalPages = 1
-    print totalPages
+    #print totalPages
+    page = None
     for q in range(totalPages):
-        page = openReviewPage("http://www.fanfiction.net/r/%d/0/%d" % (storyID, q+1))
         
-        numReviews = page.count("<tr>")
+        while page == None:
+            page = openReviewPage("http://www.fanfiction.net/r/%d/0/%d" % (storyID, q+1))
+        
+        
         end = page.find("id='gui_table1i'")
         end = page.find("tbody", end)
-        print end
+        numReviews = page.count("<tr  >", end)
+        #print end
         for i in range(numReviews):
-            start = page.find("<tr>", end)
+            start = page.find("<tr  >", end)
             end = page.find("</tr>", start)
-            print start
-            print end
+            #print start
+            #print end
             exert = page[start:end]
-            print exert
-            reviews.append(Review(exert))
+            #print exert
+            reviews.append(Review(exert, storyID))
+            
+    return reviews
         
     

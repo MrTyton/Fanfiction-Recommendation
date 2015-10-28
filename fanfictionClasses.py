@@ -85,10 +85,17 @@ class Author():
         return "%s, %s with %d written stories and %d favorites" % (self.name, self.id, len(self.stories), len(self.favorites))
     
 class Review():
-    def __init__(self, exert):
+    def __init__(self, exert, id):
         soup = BeautifulSoup(exert)
-        loc = exert.find('a href="/u/') 
-        self.user = exert[loc + 12 : exert.find("/", loc+12)]
+        loc = exert.find("<a href='/u/")
+        if loc == -1:
+            self.user = -1 
+        else:
+            self.user = int(exert[loc + 12 : exert.find("/", loc+12)])
         loc = exert.find("<small", loc+12)
-        self.chapter = exert[loc+34: exert.find(" ", loc+34)]
+        self.chapter = int(exert[loc+34: exert.find(" ", loc+34)])
         self.review = soup.div.text
+        self.storyID = id
+        
+    def __repr__(self):
+        return "%d wrote on story %d chapter %d, saying %s" % (self.user, self.id, self.chapter, self.review)
