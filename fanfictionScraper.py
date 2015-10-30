@@ -9,11 +9,12 @@ from Queue import Queue
 import sys
 import sqlite3
 from time import sleep, time
+from copy import deepcopy
 import random
 authors = {}
 
 class scrapeThread(threading.Thread):
-    def __init__(self, startnumber, perthread):
+    """def __init__(self, startnumber, perthread):
         threading.Thread.__init__(self)
         self.startnumber = startnumber
         self.endnumber = startnumber + perthread
@@ -28,10 +29,16 @@ class scrapeThread(threading.Thread):
                     self.startnumber = max(temp)+1
                 print "Starting from %d" % self.startnumber
             except Exception as e:
-                print "Something broke: ", e
+                print "Something broke: ", e"""
+    
+    def __init__(self, numbers, i):
+        threading.Thread.__init__(self)
+        self.startnumber = i
+        self.tohit = deepcopy(numbers)
         
     def run(self):
-        for i in range(self.startnumber, self.endnumber):
+        #for i in range(self.startnumber, self.endnumber):
+        for i in self.tohit:
             for x in range(3):
                 try:
                     #print i
@@ -91,7 +98,7 @@ class workerThread(threading.Thread):
                                     except Exception as ez:
                                         print "Something broke with story %s" % curr, ez
                         except Exception as e:
-                            print "Something broke with author %s" % author
+                            print "Something broke with author %s" % author, e
                         print "Processed %s" % author
                     elif isinstance(item, list):
                         rev = item
@@ -104,7 +111,7 @@ class workerThread(threading.Thread):
                         print "Wtf did you pass me"
                     queue.task_done()
                 conn.commit()
-                sleep(5)
+                sleep(60)
         
         
 class reviewScrape(threading.Thread):
@@ -127,35 +134,32 @@ class reviewScrape(threading.Thread):
 
 #total number: 7077300, 3200
 #threadLock = threading.Lock()
-threads = []
-perthread = 20e5
-queue = Queue(5000)
-jobqueue = Queue(5000)
-startrest = threading.Event()
-workingThread = workerThread()
-workingThread.start()
-stop = threading.Event()
-startrest.wait()
-
-numbers = sorted(random.sample(xrange(int(70e6)),int(10e6)))
-
-
-for i in range(1000000, 1000100, perthread):
-    addThread = scrapeThread(i, perthread)
-    threads.append(addThread)
-for i in range(5):
-    addThread = reviewScrape()
-    addThread.start()
-starttime = time()
-for curThread in threads:
-    curThread.start()
+if __name__ == "__main__":
+    threads = []
+    perthread = 20000
+    queue = Queue(5000)
+    jobqueue = Queue(5000)
+    startrest = threading.Event()
+    workingThread = workerThread()
+    workingThread.start()
+    stop = threading.Event()
+    startrest.wait()
     
-for curThread in threads:
-    curThread.join()
-jobqueue.join()
-queue.join()
-stop.set()
-print "Done, took %d seconds, waiting for all threads to exit." % (time() - starttime)
-sys.exit(1)    
+    numbers = random.sample(xrange(int(7e6)), int(1e6))
+    starttime = time()
+    for i in range(0, len(numbers), perthread):
+        addThread = scrapeThread(numbers[i:i+perthread], i)
+        addThread.start()
+        threads.append(addThread)
+    for i in range(5):
+        addThread = reviewScrape()
+        addThread.start()
+    for curThread in threads:
+        curThread.join()
+    jobqueue.join()
+    queue.join()
+    stop.set()
+    print "Done, took %d seconds, waiting for all threads to exit." % (time() - starttime)
+    sys.exit(1)    
 
 
