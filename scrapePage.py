@@ -75,7 +75,7 @@ def scrapePage(page_URL, id):
         datatitles = exert[a:b]
         datatitles = "%s\"" % datatitles.replace("<", "").replace(">", "").replace("\"", "").replace("data-title=", "data-title=\"")
         exert = "%s%s%s" % (exert[:a],datatitles,exert[b:])
-        a_f(Story(exert, False))
+        a_f(Story(exert))
     
         
     return author

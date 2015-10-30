@@ -1,6 +1,7 @@
 import time
-from .scrapePage import scrapePage
+from .scrapePage import scrapePage, scrapeReview
 from .SimpleProgress import SimpleProgress
+from .fanfictionClasses import Author, Review
 import pickle
 import threading
 from os.path import isfile
@@ -8,6 +9,7 @@ from Queue import Queue
 import sys
 import sqlite3
 from time import sleep, time
+import random
 authors = {}
 
 class scrapeThread(threading.Thread):
@@ -30,17 +32,22 @@ class scrapeThread(threading.Thread):
         
     def run(self):
         for i in range(self.startnumber, self.endnumber):
-            try:
-                #print i
-                insertion = scrapePage("https://www.fanfiction.net/u/%d" % i, i)
-                #print insertion
-                if insertion is not None:
-                    queue.put(insertion)
-                    print "Added %d, %s" % (i, insertion.name)
-                    #time.sleep(2)
-            except Exception as e:
-                with open("output.txt", "a") as fp:
-                    fp.write("Thread %d on item %d broke, with exception: %s\n\n" % (self.startnumber, i, str(e)))
+            for x in range(3):
+                try:
+                    #print i
+                    insertion = scrapePage("https://www.fanfiction.net/u/%d" % i, i)
+                    #print insertion
+                    if insertion is not None:
+                        queue.put(insertion)
+                        print "Added %d, %s" % (i, insertion.name)
+                        break
+                        #time.sleep(2)
+                    if insertion is None:
+                        break
+                except Exception as e:
+                    if x == 3:
+                        with open("output.txt", "a") as fp:
+                            fp.write("Thread %d on item %d broke, with exception: %s\n\n" % (self.startnumber, i, str(e)))
         print "Exiting thread %d" % self.startnumber
         
 class workerThread(threading.Thread):
@@ -57,57 +64,98 @@ class workerThread(threading.Thread):
                 c.execute("CREATE TABLE author_written (authorID int, storyID int)")
                 c.execute("CREATE TABLE stories (id int PRIMARY KEY, authorID int, name string, wordcount int, published int, updated int, reviews int, chapters int, completed boolean, category string, rate int, language string, summary string)")
                 c.execute("CREATE TABLE story_tags (storyid int, tag string)")
+                c.execute("CREATE TABLE reviews (storyid int, chapter int, reviewer int, content string)")
             except Exception as e:
-                print "Tables already exist"
+                print "Tables already exist", e
             #should add tags, rating, should also probably add reviews
             conn.commit()
+            startrest.set()
             count = 0
-            while True:
-                author = queue.get()
+            while not stop.isSet():
+                while not queue.empty():
+                    item = queue.get()
+                    if isinstance(item, Author):
+                        author = item
+                        try:
+                            c.execute("INSERT INTO authors VALUES (?, ?)", (author.name, author.id))
+                            c.executemany("INSERT INTO author_favorites VALUES (?, ?)", [(author.id, x) for x in author.favorites])
+                            c.executemany("INSERT INTO author_written VALUES (?, ?)", [(author.id, x) for x in author.stories])
+                            for authorlist in (author.stories, author.favorites):
+                                for key in authorlist.keys():
+                                    curr = authorlist[key]
+                                    try:
+                                        c.execute("INSERT INTO stories VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)", (curr.ID, curr.authorID, curr.title, curr.wordcount, curr.published, curr.updated, curr.reviews, curr.chapters, 1 if curr.completed else 0, curr.category, curr.rating, curr.language, curr.summary))
+                                        if curr.tags != ["None"]:
+                                            c.executemany("INSERT INTO story_tags VALUES (?,?)", [(curr.ID, x) for x in curr.tags])
+                                        jobqueue.put(curr.ID)
+                                    except Exception as ez:
+                                        print "Something broke with story %s" % curr, ez
+                        except Exception as e:
+                            print "Something broke with author %s" % author
+                        print "Processed %s" % author
+                    elif isinstance(item, list):
+                        rev = item
+                        try:
+                            c.executemany("INSERT INTO reviews VALUES (?,?,?,?)", [(curr.storyID, curr.chapter, curr.user, curr.review) for curr in rev])
+                        except Exception as e:
+                            print "Something broke with review for %d" % rev[0].storyID, e
+                        print "Processed reviews for %d" % rev[0].storyID
+                    else:
+                        print "Wtf did you pass me"
+                    queue.task_done()
+                conn.commit()
+                sleep(5)
+        
+        
+class reviewScrape(threading.Thread):
+    def __init__(self):
+        threading.Thread.__init__(self)
+        
+    def run(self):
+        while not stop.isSet():
+            while not jobqueue.empty():
+                storyid = jobqueue.get()
                 try:
-                    c.execute("INSERT INTO authors VALUES (?, ?)", (author.name, author.id))
-                    c.executemany("INSERT INTO author_favorites VALUES (?, ?)", [(author.id, x) for x in author.favorites])
-                    c.executemany("INSERT INTO author_written VALUES (?, ?)", [(author.id, x) for x in author.stories])
-                    for authorlist in (author.stories,):#, author.favorites):
-                        for key in authorlist.keys():
-                            curr = authorlist[key]
-                            try:
-                                c.execute("INSERT INTO stories VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)", (curr.ID, curr.authorID, curr.title, curr.wordcount, curr.published, curr.updated, curr.reviews, curr.chapters, 1 if curr.completed else 0, curr.category, curr.rating, curr.language, curr.summary))
-                                if curr.tags != ["None"]:
-                                    c.executemany("INSERT INTO story_tags VALUES (?,?)", [(curr.ID, x) for x in curr.tags])
-                            except Exception as ez:
-                                print "Something broke with story %s" % curr, ez
+                    reviews = scrapeReview(storyid)
+                    queue.put(reviews)
+                    print "Added reviews for %d" % storyid
                 except Exception as e:
-                    print "Something broke with author %s" % author
-                
-                print "Processed %s" % author
-                if queue.empty():
-                    conn.commit()
-                queue.task_done()
-                if queue.empty():
-                    sleep(60)
-        
-        
+                    with open("output.txt", "a") as fp:
+                        fp.write("Review thread broke on storyid %d, with exception: %s\n" % (storyid, str(e)))
+                jobqueue.task_done()
+            
 
 #total number: 7077300, 3200
 #threadLock = threading.Lock()
 threads = []
-perthread = 250000
+perthread = 20e5
 queue = Queue(5000)
+jobqueue = Queue(5000)
+startrest = threading.Event()
 workingThread = workerThread()
 workingThread.start()
-for i in range(3000000, 4000000, perthread):
+stop = threading.Event()
+startrest.wait()
+
+numbers = sorted(random.sample(xrange(int(70e6)),int(10e6)))
+
+
+for i in range(1000000, 1000100, perthread):
     addThread = scrapeThread(i, perthread)
     threads.append(addThread)
-    
+for i in range(5):
+    addThread = reviewScrape()
+    addThread.start()
 starttime = time()
 for curThread in threads:
     curThread.start()
     
 for curThread in threads:
     curThread.join()
+jobqueue.join()
 queue.join()
-print "Done, took %d seconds" % (time() - starttime)
+stop.set()
+print "Done, took %d seconds, waiting for all threads to exit." % (time() - starttime)
 sys.exit(1)    
 
 
