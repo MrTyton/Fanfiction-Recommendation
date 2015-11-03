@@ -114,7 +114,7 @@ def scrapeReview(storyID):
     
     page = openReviewPage("http://www.fanfiction.net/r/%d/0/1" % storyID)
     
-    if page == None: return None
+    if page == None: return []
     
     check = page.find("/'>Last</a>")
     if check != -1:

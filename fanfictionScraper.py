@@ -31,14 +31,16 @@ class scrapeThread(threading.Thread):
             except Exception as e:
                 print "Something broke: ", e"""
     
-    def __init__(self, numbers, i):
+    def __init__(self, i):
         threading.Thread.__init__(self)
         self.startnumber = i
-        self.tohit = deepcopy(numbers)
+        #self.tohit = deepcopy(numbers)
         
     def run(self):
         #for i in range(self.startnumber, self.endnumber):
-        for i in self.tohit:
+        #for i in self.tohit:
+        while not userqueue.empty():
+            i = userqueue.get()
             for x in range(3):
                 try:
                     #print i
@@ -47,14 +49,17 @@ class scrapeThread(threading.Thread):
                     if insertion is not None:
                         queue.put(insertion)
                         print "Added %d, %s" % (i, insertion.name)
+                        userqueue.task_done()
                         break
                         #time.sleep(2)
                     if insertion is None:
+                        userqueue.task_done()
                         break
                 except Exception as e:
                     if x == 3:
                         with open("output.txt", "a") as fp:
                             fp.write("Thread %d on item %d broke, with exception: %s\n\n" % (self.startnumber, i, str(e)))
+                        userqueue.task_done()
         print "Exiting thread %d" % self.startnumber
         
 class workerThread(threading.Thread):
@@ -94,7 +99,8 @@ class workerThread(threading.Thread):
                                         c.execute("INSERT INTO stories VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)", (curr.ID, curr.authorID, curr.title, curr.wordcount, curr.published, curr.updated, curr.reviews, curr.chapters, 1 if curr.completed else 0, curr.category, curr.rating, curr.language, curr.summary))
                                         if curr.tags != ["None"]:
                                             c.executemany("INSERT INTO story_tags VALUES (?,?)", [(curr.ID, x) for x in curr.tags])
-                                        jobqueue.put(curr.ID)
+                                        if curr.reviews != 0:
+                                            jobqueue.put(curr.ID)
                                     except Exception as ez:
                                         print "Something broke with story %s" % curr, ez
                         except Exception as e:
@@ -107,6 +113,7 @@ class workerThread(threading.Thread):
                         except Exception as e:
                             print "Something broke with review for %d" % rev[0].storyID, e
                         print "Processed reviews for %d" % rev[0].storyID
+                    elif item is None: a=0
                     else:
                         print "Wtf did you pass me"
                     queue.task_done()
@@ -124,7 +131,8 @@ class reviewScrape(threading.Thread):
                 storyid = jobqueue.get()
                 try:
                     reviews = scrapeReview(storyid)
-                    queue.put(reviews)
+                    if reviews != []:
+                        queue.put(reviews)
                     print "Added reviews for %d" % storyid
                 except Exception as e:
                     with open("output.txt", "a") as fp:
@@ -135,27 +143,32 @@ class reviewScrape(threading.Thread):
 #total number: 7077300, 3200
 #threadLock = threading.Lock()
 if __name__ == "__main__":
-    threads = []
     perthread = 20000
-    queue = Queue(5000)
-    jobqueue = Queue(5000)
+    queue = Queue()
+    jobqueue = Queue()
+    userqueue = Queue()
     startrest = threading.Event()
+    stop = threading.Event()
     workingThread = workerThread()
     workingThread.start()
-    stop = threading.Event()
     startrest.wait()
     
     numbers = random.sample(xrange(int(7e6)), int(1e6))
+    for x in numbers: userqueue.put(x)
     starttime = time()
-    for i in range(0, len(numbers), perthread):
-        addThread = scrapeThread(numbers[i:i+perthread], i)
+    for i in range(5):
+        addThread = scrapeThread(i)
         addThread.start()
-        threads.append(addThread)
+        #threads.append(addThread)
     for i in range(5):
         addThread = reviewScrape()
         addThread.start()
-    for curThread in threads:
-        curThread.join()
+    #for curThread in threads:
+    #    curThread.join()
+    userqueue.join()
+    for i in range(5):
+        addThread = reviewScrape()
+        addThread.start()
     jobqueue.join()
     queue.join()
     stop.set()
