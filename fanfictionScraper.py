@@ -1,19 +1,21 @@
 import time
-from .scrapePage import scrapePage, scrapeReview
-from .SimpleProgress import SimpleProgress
-from .fanfictionClasses import Author, Review
+from Fanfiction.scrapePage import scrapePage, scrapeReview
+#from .SimpleProgress import SimpleProgress
+from Fanfiction.fanfictionClasses import Author, Review
 import pickle
-import threading
+#import threading
+import multiprocessing
 from os.path import isfile
-from Queue import Queue
+#from Queue import Queue
 import sys
 import sqlite3
 from time import sleep, time
 from copy import deepcopy
 import random
+import pickle
 authors = {}
 
-class scrapeThread(threading.Thread):
+class scrapeThread(multiprocessing.Process):
     """def __init__(self, startnumber, perthread):
         threading.Thread.__init__(self)
         self.startnumber = startnumber
@@ -31,40 +33,46 @@ class scrapeThread(threading.Thread):
             except Exception as e:
                 print "Something broke: ", e"""
     
-    def __init__(self, i):
-        threading.Thread.__init__(self)
+    def __init__(self, i, userqueue, consumerqueue):
+        multiprocessing.Process.__init__(self)
         self.startnumber = i
+        self.userqueue = userqueue
+        self.consumerqueue = consumerqueue
         #self.tohit = deepcopy(numbers)
         
     def run(self):
         #for i in range(self.startnumber, self.endnumber):
         #for i in self.tohit:
-        while not userqueue.empty():
-            i = userqueue.get()
+        while not self.userqueue.empty():
+            i = self.userqueue.get()
             for x in range(3):
                 try:
                     #print i
                     insertion = scrapePage("https://www.fanfiction.net/u/%d" % i, i)
                     #print insertion
                     if insertion is not None:
-                        queue.put(insertion)
+                        self.consumerqueue.put(insertion)
                         print "Added %d, %s" % (i, insertion.name)
-                        userqueue.task_done()
+                        self.userqueue.task_done()
                         break
                         #time.sleep(2)
                     if insertion is None:
-                        userqueue.task_done()
+                        self.userqueue.task_done()
                         break
                 except Exception as e:
                     if x == 3:
                         with open("output.txt", "a") as fp:
                             fp.write("Thread %d on item %d broke, with exception: %s\n\n" % (self.startnumber, i, str(e)))
-                        userqueue.task_done()
+                        self.userqueue.task_done()
         print "Exiting thread %d" % self.startnumber
         
-class workerThread(threading.Thread):
-    def __init__(self):
-        threading.Thread.__init__(self)
+class workerThread(multiprocessing.Process):
+    def __init__(self, consumerqueue, jobqueue, stop, startrest):
+        multiprocessing.Process.__init__(self)
+        self.consumerqueue = consumerqueue
+        self.jobqueue = jobqueue
+        self.stop = stop
+        self.startrest = startrest
         
         
     def run(self):
@@ -81,11 +89,11 @@ class workerThread(threading.Thread):
                 print "Tables already exist", e
             #should add tags, rating, should also probably add reviews
             conn.commit()
-            startrest.set()
+            self.startrest.set()
             count = 0
-            while not stop.isSet():
-                while not queue.empty():
-                    item = queue.get()
+            while not self.stop.is_set():
+                while not self.consumerqueue.empty():
+                    item = self.consumerqueue.get()
                     if isinstance(item, Author):
                         author = item
                         try:
@@ -100,7 +108,7 @@ class workerThread(threading.Thread):
                                         if curr.tags != ["None"]:
                                             c.executemany("INSERT INTO story_tags VALUES (?,?)", [(curr.ID, x) for x in curr.tags])
                                         if curr.reviews != 0:
-                                            jobqueue.put(curr.ID)
+                                            self.jobqueue.put(curr.ID)
                                     except Exception as ez:
                                         print "Something broke with story %s" % curr, ez
                         except Exception as e:
@@ -116,61 +124,66 @@ class workerThread(threading.Thread):
                     elif item is None: a=0
                     else:
                         print "Wtf did you pass me"
-                    queue.task_done()
+                    self.consumerqueue.task_done()
                 conn.commit()
                 sleep(60)
         
         
-class reviewScrape(threading.Thread):
-    def __init__(self):
-        threading.Thread.__init__(self)
+class reviewScrape(multiprocessing.Process):
+    def __init__(self, jobqueue, consumerqueue, stop):
+        multiprocessing.Process.__init__(self)
+        self.jobqueue = jobqueue
+        self.consumerqueue = consumerqueue
+        self.stop = stop
         
     def run(self):
-        while not stop.isSet():
-            while not jobqueue.empty():
-                storyid = jobqueue.get()
+        while not self.stop.is_set():
+            while not self.jobqueue.empty():
+                storyid = self.jobqueue.get()
                 try:
                     reviews = scrapeReview(storyid)
                     if reviews != []:
-                        queue.put(reviews)
+                        self.consumerqueue.put(reviews)
                     print "Added reviews for %d" % storyid
                 except Exception as e:
                     with open("output.txt", "a") as fp:
                         fp.write("Review thread broke on storyid %d, with exception: %s\n" % (storyid, str(e)))
-                jobqueue.task_done()
+                self.jobqueue.task_done()
             
 
 #total number: 7077300, 3200
 #threadLock = threading.Lock()
 if __name__ == "__main__":
     perthread = 20000
-    queue = Queue()
-    jobqueue = Queue()
-    userqueue = Queue()
-    startrest = threading.Event()
-    stop = threading.Event()
-    workingThread = workerThread()
+    consumerqueue = multiprocessing.JoinableQueue()
+    jobqueue = multiprocessing.JoinableQueue()
+    userqueue = multiprocessing.JoinableQueue()
+    startrest = multiprocessing.Event()
+    stop = multiprocessing.Event()
+    workingThread = workerThread(consumerqueue, jobqueue, stop, startrest)
     workingThread.start()
     startrest.wait()
     
     numbers = random.sample(xrange(int(7e6)), int(1e6))
+    with open("numbers.pkl", "w") as fp:
+        pickle.dump(numbers, fp)
     for x in numbers: userqueue.put(x)
     starttime = time()
     for i in range(5):
-        addThread = scrapeThread(i)
+        addThread = scrapeThread(i, userqueue, consumerqueue)
         addThread.start()
         #threads.append(addThread)
     for i in range(5):
-        addThread = reviewScrape()
+        addThread = reviewScrape(jobqueue, consumerqueue, stop)
         addThread.start()
     #for curThread in threads:
     #    curThread.join()
     userqueue.join()
     for i in range(5):
-        addThread = reviewScrape()
+        addThread = reviewScrape(jobqueue, consumerqueue, stop)
         addThread.start()
     jobqueue.join()
-    queue.join()
+    consumerqueue.join()
     stop.set()
     print "Done, took %d seconds, waiting for all threads to exit." % (time() - starttime)
     sys.exit(1)    
