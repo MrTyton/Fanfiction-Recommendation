@@ -13,6 +13,7 @@ from time import sleep, time
 from copy import deepcopy
 import random
 import pickle
+import os.path
 authors = {}
 
 class scrapeThread(multiprocessing.Process):
@@ -160,14 +161,38 @@ if __name__ == "__main__":
     userqueue = multiprocessing.JoinableQueue()
     startrest = multiprocessing.Event()
     stop = multiprocessing.Event()
+    
+    if os.path.isfile("numbers.pkl"):
+        print "Loading numbers from file"
+        with open("numbers.pkl", "r") as fp:
+            numbers = pickle.load(fp)
+        print len(numbers)
+        if os.path.isfile("fanfiction.db"):
+            with sqlite3.connect("fanfiction.db") as conn:
+                print "Calculating starting number"
+                c = conn.cursor()
+                c.execute("SELECT id FROM authors")
+                authors = [x[0] for x in c.fetchall()]
+                
+                startval = max([numbers.index(x) for x in authors])
+                print "Starting from %d, %f percent of the way" % (startval, float(startval)/len(numbers))
+                numbers = numbers[startval+1:]
+            print "Determining reviews"
+            c.execute("SELECT id FROM stories WHERE id NOT IN (SELECT DISTINCT storyid FROM reviews) AND reviews != 0"); revs = c.fetchall()
+            print "Adding %d stories to the review queue" % len(revs)
+            revs = [x[0] for x in revs]
+            for x in revs: jobqueue.put(x)
+    else:
+        numbers = random.sample(xrange(int(7e6)), int(1e6))
+        with open("numbers.pkl", "w") as fp:
+            pickle.dump(numbers, fp)
+    for x in numbers: userqueue.put(x)
+    
+    
     workingThread = workerThread(consumerqueue, jobqueue, stop, startrest)
     workingThread.start()
     startrest.wait()
-    
-    numbers = random.sample(xrange(int(7e6)), int(1e6))
-    with open("numbers.pkl", "w") as fp:
-        pickle.dump(numbers, fp)
-    for x in numbers: userqueue.put(x)
+
     starttime = time()
     for i in range(5):
         addThread = scrapeThread(i, userqueue, consumerqueue)
