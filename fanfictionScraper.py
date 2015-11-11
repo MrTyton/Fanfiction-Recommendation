@@ -94,11 +94,11 @@ class workerThread(threading.Thread):
 #total number: 7077300, 3200
 #threadLock = threading.Lock()
 threads = []
-perthread = 250000
+perthread = 2500
 queue = Queue(5000)
 workingThread = workerThread()
 workingThread.start()
-for i in range(1000000, 2000000, perthread):
+for i in range(2001000, 2011000, perthread):
     addThread = scrapeThread(i, perthread)
     threads.append(addThread)
     
