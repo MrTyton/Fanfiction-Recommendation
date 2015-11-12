@@ -152,18 +152,7 @@ class reviewScrape(multiprocessing.Process):
                 self.jobqueue.task_done()
             
 
-#total number: 7077300, 3200
-#threadLock = threading.Lock()
-<<<<<<< HEAD
-threads = []
-perthread = 2500
-queue = Queue(5000)
-workingThread = workerThread()
-workingThread.start()
-for i in range(2001000, 2011000, perthread):
-    addThread = scrapeThread(i, perthread)
-    threads.append(addThread)
-=======
+
 if __name__ == "__main__":
     perthread = 20000
     consumerqueue = multiprocessing.JoinableQueue()
@@ -171,7 +160,6 @@ if __name__ == "__main__":
     userqueue = multiprocessing.JoinableQueue()
     startrest = multiprocessing.Event()
     stop = multiprocessing.Event()
->>>>>>> origin/master
     
     if os.path.isfile("numbers.pkl"):
         print "Loading numbers from file"
