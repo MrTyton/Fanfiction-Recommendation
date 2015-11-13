@@ -1,18 +1,16 @@
 import sqlite3
 from itertools import combinations
 import time
-import multiprocessing
-
 
 
 def get_generator(statement):
-    conn = sqlite3.connect("fanfiction_no_reviews.db")
-    genc = conn.cursor()
-    genc.execute(statement)
-    ret = genc.fetchone()
-    while ret is not None:
-        yield ret
+    with sqlite3.connect("fanfiction_no_reviews.db") as conn:
+        genc = conn.cursor()
+        genc.execute(statement)
         ret = genc.fetchone()
+        while ret is not None:
+            yield ret
+            ret = genc.fetchone()
         
 class SimpleProgress:
     def __init__(self, total):
@@ -44,56 +42,6 @@ class SimpleProgress:
         left = 30-done
         return "[%s%s]" % ('|'*done, ':'*left)
     
-    
-    
-    
-def updater(consumequeue, stop, lock):
-    print "In consumer thread"
-    conn = sqlite3.connect("fanfiction_no_reviews.db")
-    c = conn.cursor()
-    while not stop.is_set():
-        a, b = consumequeue.get()
-        lock.acquire()
-        try:
-            c.execute("INSERT INTO links VALUES (?, ?)", (a, b))
-            c.execute("INSERT INTO links VALUES (?, ?)", (b, a))
-        except Exception:
-            q = 0
-        c.execute("UPDATE outcounts SET count = count + 1 WHERE node = ? OR node = ?", (a, b))
-        lock.release()
-        consumequeue.task_done()
-      
-def processer(jobqueue, consumequeue, timequeue, lock):
-    print "In processing thread"
-    conn = sqlite3.connect("fanfiction_no_reviews.db")
-    c = conn.cursor()
-    while not jobqueue.empty():
-        cur = jobqueue.get()
-        lock.acquire()
-        favs = [x[0] for x in get_generator("SELECT DISTINCT storyID FROM author_favorites WHERE authorID = %d" % cur)]
-        lock.release()
-        for a,b in combinations(favs, 2):
-            consumequeue.put((a, b))
-        timequeue.put(1)
-        jobqueue.task_done()
-        
-def timer(timequeue, stop, lock):
-    print "In timer thread"
-    conn = sqlite3.connect("fanfiction_no_reviews.db")
-    c = conn.cursor()
-    lock.acquire()
-    c.execute("SELECT COUNT(DISTINCT authorID) FROM author_favorites"); num = c.fetchone()[0]
-    lock.release()
-    print "Starting timer"
-    timer = SimpleProgress(num)
-    timer.start_progress()
-    t = 0
-    while not stop.is_set():
-        timequeue.get()
-        t += 1
-        print timer.update(t)
-        timequeue.task_done()
-        
         
 if __name__ == "__main__":
     conn = sqlite3.connect("fanfiction_no_reviews.db")
@@ -115,37 +63,44 @@ if __name__ == "__main__":
     
     #c.execute("CREATE TABLE names (name int)")
     #c.executemany("INSERT INTO names VALUES (?)", [(x[0],) for x in vals])
-    #c.execute("SELECT COUNT(DISTINCT authorID) FROM author_favorites"); num = c.fetchone()[0]
-    #timer = SimpleProgress(num)
-    #timer.start_progress()
-    #t = 0
-    print "Starting multiprocessing"
-    jobqueue = multiprocessing.JoinableQueue()
-    consumequeue = multiprocessing.JoinableQueue()
-    timequeue = multiprocessing.JoinableQueue()
-    
-    for author in get_generator("SELECT DISTINCT authorID FROM author_favorites"): jobqueue.put(author[0])
-    print "Finished adding to queue, starting threads"
-    stop = multiprocessing.Event()
-    lock = multiprocessing.RLock()
-    
-    p = multiprocessing.Process(target=updater, args=(consumequeue, stop, lock))
-    p.start()
-    p = multiprocessing.Process(target=timer, args=(timequeue,stop, lock))
-    p.start()
-    for i in range(10):
-    
-        p = multiprocessing.Process(target=processer, args=(jobqueue, consumequeue, timequeue, lock))
-        p.start()
-              
-    jobqueue.join()
-    print "Waiting for consumer to finish"
-    consumequeue.join()
-    stop.set()
-    print "DONE"
+    num = 296097
 
-
-
-
+    t = 0
     
+    def dump(items):
+        
+        for a, b in items:
+            try:
+                c.execute("INSERT INTO links VALUES (?, ?)", (a, b))
+                c.execute("INSERT INTO links VALUES (?, ?)", (b, a))
+            except Exception as e:
+                q = 0
+
+    done = set()
+    print "Starting dumps"
+    for author in get_generator("SELECT DISTINCT authorID FROM author_favorites WHERE authorID IN (SELECT authorID FROM author_favorites GROUP BY authorID HAVING COUNT(*) > 1) ORDER BY COUNT(authorID) ASC"):
+
+        if t == 0:
+             print "Starting timer"
+             timer = SimpleProgress(num)
+             timer.start_progress()
+               
+        cur = author[0]
+        favs = set([x[0] for x in get_generator("SELECT storyID FROM author_favorites WHERE authorID = %d" % cur)])
+        #if len(favs) < 2: continue
+        intersect = favs & done
+        if len(intersect) < 2:
+            dump([x for x in combinations(favs, 2)])
+            done = done | favs
+        else:
+            print "Doing Finegaling"
+            newfavs = favs - intersect
+            dump([x for x in combinations(newfavs, 2)])
+            for cur in intersect:
+                dump([(cur, x) for x in newfavs])
+            done = done | newfavs
+        t += 1
+        print timer.update(t)
+    conn.commit()
+            
 
