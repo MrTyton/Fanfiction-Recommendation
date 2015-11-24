@@ -16,10 +16,10 @@ import lda
 from nltk import word_tokenize
 import nltk
 import numpy as np
-
+from scipy import spatial
 
 __all__ = []
-__version__ = 0.93
+__version__ = 0.94
 __date__ = '2015-11-20'
 __updated__ = '2015-11-23'
 
@@ -371,10 +371,99 @@ class OnlineLDAExperiment():
         self.stopwords.extend(string.punctuation)
         with open('/export/apps/dev/fanfiction/stopwords.txt', 'r') as stopin:
             self.stopwords.extend([x.strip() for x in stopin])
-        
+    
+    def similarity(self, u, v):
+        return 1 - spatial.distance.cosine(u, v)
+    
     def tokenize(self, text):
         return [x for x in word_tokenize(text.lower()) if x not in self.stopwords]
     
+    def evaluate_model(self, modelfile="/export/apps/dev/fanfiction/models/lda1p_0.93_k5_a1.0_enil.model"):
+        basedir="/export/apps/dev/fanfiction"
+        logging.info("Loading model from file")
+        lda = models.ldamodel.LdaModel.load(modelfile)
+        logging.info("Loading dictionary from file")
+        self.dictionary = corpora.Dictionary.load("{}/models/summaries_1p.dict".format(basedir))
+        if os.path.exists("{}/models/summaries_topics.mm".format(basedir)):
+            logging.info("Loading corpus from disk")
+            corpus = corpora.MmCorpus('{}/models/summaries_topics.mm'.format(basedir))
+        elif os.path.exists("{}/models/summaries_1p.mm".format(basedir)):
+            logging.info("Loading corpus from disk")
+            corpus = corpora.MmCorpus('{}/models/summaries_1p.mm'.format(basedir))
+            logging.info("Writing corpus as topics to disk")
+            corpora.MmCorpus.serialize('{}/models/summaries_topics.mm'.format(basedir), lda[corpus])
+            corpus = corpora.MmCorpus('{}/models/summaries_topics.mm'.format(basedir))
+        else:
+            logging.info("Creating corpus to generate summaries as bags of words")
+            corpus = FanFictionCorpus(self.dictionary)
+            logging.info("Writing corpus as topics to disk")
+            corpora.MmCorpus.serialize('{}/models/summaries_topics.mm'.format(basedir), lda[corpus])
+            corpus = corpora.MmCorpus('{}/models/summaries_topics.mm'.format(basedir))
+        conn = sqlite3.connect("/media/export/apps/dev/fanfiction/fanfiction_no_reviews.db")
+        logging.info("Connected")
+        
+        # Select 100 readers  
+        # with at least 5 favorites
+        c=conn.execute("SELECT a.id, count(f.storyID) FROM authors a, author_favorites f WHERE f.authorID=a.id GROUP BY a.id HAVING count(f.storyID)>4")
+        logging.info("Executed")
+        #readers = random.shuffle([row[0] for row in c])[:100]
+        readers = [row[0] for row in c][:1000]
+        c.close()
+        c=conn.execute("SELECT id FROM stories WHERE language='English'")
+        mrrs=[]
+        for reader in readers:
+            c=conn.execute("SELECT f.storyID, s.summary FROM author_favorites f, stories s WHERE s.id=f.storyID AND f.authorID='?'", reader)
+            favsummaries = random.shuffle([[row[0],row[1]] for row in c])
+            split = int(len(favsummaries)*0.05)
+            if split==0:
+                split=1
+            heldout = favsummaries[:split]
+            train = favsummaries[split:]
+            thematrix = []
+            lda = models.ldamodel.LdaModel.load(modelfile)
+            # Create a topic proportion matrix 
+            # for all the favorite stories in train
+            for row in train:
+                storyid = row[0]
+                summary = row[1].strip()
+                if summary:
+                    story_word_counts = self.dictionary.doc2bow(self.tokenize(summary))
+                    story_topic_proportions = lda[story_word_counts]
+                    thematrix.add(story_topic_proportions)
+            heldoutvectors = []
+            for row in heldout:
+                storyid = row[0]
+                summary = row[1].strip()
+                if summary:
+                    story_word_counts = self.dictionary.doc2bow(self.tokenize(summary))
+                    story_topic_proportions = lda[story_word_counts]
+                    heldoutvectors.add(story_topic_proportions)
+            # Choose the most similar favorite story
+            # to use for ranking
+            scores = []
+            for vector in corpus:
+                score = max([self.similarity(vector, fav) for fav in thematrix])
+                scores.append(score)
+            scores.sort(reverse=True)
+            # Now check the heldout
+            rrarr=[]
+            for heldoutvec in heldoutvectors:
+                score = max([self.similarity(heldoutvec, fav) for fav in thematrix])
+                
+                i=0
+                while scores[i]>=score and i<len(scores):
+                    i=i+1 
+                rrarr.append(1/i)
+            rdrmrr = np.average(rrarr)
+            mrrs.append(rdrmrr)
+        mrr=np.average(mrrs)
+        logging.info("Results (MRR): {:.4f}".format(mrr))
+# Want to collect fav and non-fav in equal proportions, 
+# then separate into two clusters using k-means. 
+# Success is % correct separation of stories into fav/non-fav                    
+            #topicmatrix = self.reduce_matrix(thematrix)
+            # OK now I have a topic matrix of favorites for this reader
+
     def run_lda_on_summaries(self, n_topics=50, alpha='auto', eta='auto'):
         if os.path.exists("summaries_1p.dict"):
             logging.info("Loading dictionary from file")
@@ -500,7 +589,8 @@ USAGE
         tme.write_topics_to_file()
         '''
         ole = OnlineLDAExperiment()
-        ole.run_lda_on_summaries(int(args.k), args.alpha, args.eta)
+        #ole.run_lda_on_summaries(int(args.k), args.alpha, args.eta)
+        ole.evaluate_model()
 
         
     except KeyboardInterrupt:
