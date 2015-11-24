@@ -169,22 +169,22 @@ if __name__ == "__main__":
         #numbers = numbers[990000:]
         if os.path.isfile("fanfiction.db"):
             with sqlite3.connect("fanfiction.db") as conn:
-                print "Calculating starting number"
+                #print "Calculating starting number"
                 c = conn.cursor()
-                c.execute("SELECT id FROM authors")
+                """"c.execute("SELECT id FROM authors")
                 authors = [x[0] for x in c.fetchall()]
                 startval = max([numbers.index(x) if numbers.count(x) != 0 else -1 for x in authors])
                 print "Starting from %d, %f percent of the way" % (startval, float(startval)/len(numbers))
                 with open("output.txt", "a") as fp:
                     fp.write("Starting from %d, %f percent of the way\n" % (startval, float(startval)/len(numbers)))
-                numbers = numbers[startval+1:]
-            print "Determining reviews"
-            c.execute("SELECT id FROM stories WHERE id NOT IN (SELECT DISTINCT storyid FROM reviews) AND reviews != 0"); revs = c.fetchall()
-            print "Adding %d stories to the review queue" % len(revs)
-            with open("output.txt", "a") as fp:
-                fp.write("Adding %d stories to the review queue\n" % len(revs))
-            revs = [x[0] for x in revs]
-            for x in revs: jobqueue.put(x)
+                numbers = numbers[startval+1:]"""
+                print "Determining reviews"
+                c.execute("SELECT id FROM stories WHERE id NOT IN (SELECT DISTINCT storyid FROM reviews) AND reviews != 0"); revs = c.fetchall()
+                print "Adding %d stories to the review queue" % len(revs)
+                with open("output.txt", "a") as fp:
+                    fp.write("Adding %d stories to the review queue\n" % len(revs))
+                revs = [x[0] for x in revs]
+                for x in revs: jobqueue.put(x)
     else:
         numbers = random.sample(xrange(int(7e6)), int(1e6))
         with open("numbers.pkl", "w") as fp:
@@ -197,18 +197,18 @@ if __name__ == "__main__":
     startrest.wait()
 
     starttime = time()
-    for i in range(5):
-        addThread = scrapeThread(i, userqueue, consumerqueue)
-        addThread.start()
+    #for i in range(5):
+     #   addThread = scrapeThread(i, userqueue, consumerqueue)
+     #   addThread.start()
         #threads.append(addThread)
     for i in range(5):
         addThread = reviewScrape(jobqueue, consumerqueue, stop)
         addThread.start()
     #for curThread in threads:
     #    curThread.join()
-    userqueue.join()
-    with open("output.txt", "a"):
-        fp.write("Finished processing users\n")
+    #userqueue.join()
+    #with open("output.txt", "a"):
+    #    fp.write("Finished processing users\n")
     for i in range(5):
         addThread = reviewScrape(jobqueue, consumerqueue, stop)
         addThread.start()
