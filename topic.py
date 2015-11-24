@@ -19,9 +19,9 @@ import numpy as np
 from scipy import spatial
 
 __all__ = []
-__version__ = 0.94
+__version__ = 0.95
 __date__ = '2015-11-20'
-__updated__ = '2015-11-23'
+__updated__ = '2015-11-24'
 
 class Topic():
     def __init__(self, name):
@@ -409,10 +409,10 @@ class OnlineLDAExperiment():
         #readers = random.shuffle([row[0] for row in c])[:100]
         readers = [row[0] for row in c][:1000]
         c.close()
-        c=conn.execute("SELECT id FROM stories WHERE language='English'")
         mrrs=[]
+        logging.info("Evaluating 1000 readers")
         for reader in readers:
-            c=conn.execute("SELECT f.storyID, s.summary FROM author_favorites f, stories s WHERE s.id=f.storyID AND f.authorID='?'", reader)
+            c=conn.execute("SELECT f.storyID, s.summary FROM author_favorites f, stories s WHERE s.id=f.storyID AND f.authorID=?",reader)
             favsummaries = random.shuffle([[row[0],row[1]] for row in c])
             split = int(len(favsummaries)*0.05)
             if split==0:
@@ -455,9 +455,13 @@ class OnlineLDAExperiment():
                     i=i+1 
                 rrarr.append(1/i)
             rdrmrr = np.average(rrarr)
+            logging.info("Reader {}: {:.5f}".format(reader, rdrmrr))
             mrrs.append(rdrmrr)
         mrr=np.average(mrrs)
-        logging.info("Results (MRR): {:.4f}".format(mrr))
+        c.close()
+        conn.close()
+        logging.info("Overall Results (MRR): {:.4f}".format(mrr))
+        return mrr
 # Want to collect fav and non-fav in equal proportions, 
 # then separate into two clusters using k-means. 
 # Success is % correct separation of stories into fav/non-fav                    
