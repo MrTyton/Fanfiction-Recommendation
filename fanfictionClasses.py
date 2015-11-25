@@ -1,4 +1,5 @@
 from BeautifulSoup import BeautifulSoup
+from .scrapePage import openStoryPage
 
 class Story():
     def __init__(self, urlString, full=True):
@@ -60,12 +61,27 @@ class Story():
                 pairings = [x[1:-1] for y in pairings for x in y]
                 self.tags.extend(pairings)
             self.tags = [x for x in self.tags if x != ""]
+            
+        self.chapter_texts = {}
                
         
     def __repr__(self):
         if self.title is None: return "Story ID: %d" % self.ID
         return "%s, %d: %s by %s" % (self.ID, self.authorID, self.title, self.author) if self.author is not None else "%s: %s" % (self.ID, self.title,)
-        
+    
+    def get_chapter_text(self):
+        for i in range(self.chapters):
+            curChapter = i + 1
+            url = "https://www.fanfiction.net/s/%d/%d/" % (self.ID, curChapter)
+            page = openStoryPage(url)
+            if page is None: continue
+            try:
+                start = page.index("<div class='storytext xcontrast_txt nocopy' id='storytext'>")
+                end = page.index("</div>\n</div>", start)
+                text = page[start+len("<div class='storytext xcontrast_txt nocopy' id='storytext'>"):end]
+                self.chapter_texts[curChapter] = text
+            except Exception: continue
+    
 class Author():
     def __init__(self, id, name):
         self.id = id

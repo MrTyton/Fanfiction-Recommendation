@@ -1,8 +1,39 @@
 import urllib2
-from .fanfictionClasses import *
 import chardet
 from time import sleep
 from BeautifulSoup import BeautifulSoup
+
+def openStoryPage(url):
+    req = urllib2.Request(url)
+    for i in range(3):
+        try:
+            response = urllib2.urlopen(req, timeout=10)
+        except:
+            if i == 2: return None
+            sleep(10)
+    if response.getcode() == 200:
+        try:
+            page = response.read()
+            encoding = chardet.detect(page)
+            page = page.decode(encoding['encoding'], errors='ignore')
+            page = page.encode("ascii", errors='ignore')
+        except:
+            print "Excepted"
+            response.close()
+            return None
+        
+        if page.find("FanFiction.Net Message Type 1") != -1:
+            print "Nothing here"
+            response.close()
+            return None
+    else:
+        print "Response code fuckup"
+        response.close()        
+        return None
+    response.close()
+    return page     
+
+from .fanfictionClasses import *
 
 def scrapePage(page_URL, id):
     req = urllib2.Request(page_URL)
@@ -143,5 +174,6 @@ def scrapeReview(storyID):
             reviews.append(Review(exert, storyID))
             
     return reviews
-        
+
+
     
