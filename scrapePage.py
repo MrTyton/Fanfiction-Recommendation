@@ -92,7 +92,7 @@ def scrapePage(page_URL, id):
         datatitles = exert[a:b]
         datatitles = "%s\"" % datatitles.replace("<", "").replace(">", "").replace("\"", "").replace("data-title=", "data-title=\"")
         exert = "%s%s%s" % (exert[:a],datatitles,exert[b:])
-        a_s(Story(exert))
+        a_s(Story.fromURL(exert))
         
     prevIndex = 0
     for i in range(numFavorite):
@@ -106,7 +106,7 @@ def scrapePage(page_URL, id):
         datatitles = exert[a:b]
         datatitles = "%s\"" % datatitles.replace("<", "").replace(">", "").replace("\"", "").replace("data-title=", "data-title=\"")
         exert = "%s%s%s" % (exert[:a],datatitles,exert[b:])
-        a_f(Story(exert))
+        a_f(Story.fromURL(exert))
     
         
     return author
