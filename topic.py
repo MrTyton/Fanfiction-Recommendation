@@ -19,9 +19,9 @@ import numpy as np
 from scipy import spatial
 
 __all__ = []
-__version__ = 0.95
+__version__ = 0.96
 __date__ = '2015-11-20'
-__updated__ = '2015-11-24'
+__updated__ = '2015-11-25'
 
 class Topic():
     def __init__(self, name):
@@ -223,7 +223,7 @@ class TopicModelExperiment():
         storyids = random.shuffle([row[0] for row in c])
         
         for reader in readers:
-            c=conn.execute("SELECT f.storyID, s.summary FROM author_favorites f, stories s WHERE s.id=f.storyID AND f.authorID='?'", reader)
+            c=conn.execute("SELECT f.storyID, s.summary FROM author_favorites f, stories s WHERE s.id=f.storyID AND f.authorID=?", int(reader))
             thematrix = []
             for row in c:
                 #storyid = row[0]
@@ -373,7 +373,7 @@ class OnlineLDAExperiment():
             self.stopwords.extend([x.strip() for x in stopin])
     
     def similarity(self, u, v):
-        return 1 - spatial.distance.cosine(u, v)
+        return 1 - spatial.distance.cosine([x[1] for x in u], [y[1] for y in v])
     
     def tokenize(self, text):
         return [x for x in word_tokenize(text.lower()) if x not in self.stopwords]
@@ -382,45 +382,51 @@ class OnlineLDAExperiment():
         basedir="/export/apps/dev/fanfiction"
         logging.info("Loading model from file")
         lda = models.ldamodel.LdaModel.load(modelfile)
+        modelfilesfx = "_".join(modelfile.split("/")[-1].split(".model")[0].split("_")[1:])
+        logging.info("Suffix = _{}".format(modelfilesfx))
         logging.info("Loading dictionary from file")
         self.dictionary = corpora.Dictionary.load("{}/models/summaries_1p.dict".format(basedir))
-        if os.path.exists("{}/models/summaries_topics.mm".format(basedir)):
+        if os.path.exists("{}/models/summaries_topics_{}.mm".format(basedir, modelfilesfx)):
             logging.info("Loading corpus from disk")
-            corpus = corpora.MmCorpus('{}/models/summaries_topics.mm'.format(basedir))
+            corpus = corpora.MmCorpus('{}/models/summaries_topics_{}.mm'.format(basedir, modelfilesfx))
         elif os.path.exists("{}/models/summaries_1p.mm".format(basedir)):
             logging.info("Loading corpus from disk")
             corpus = corpora.MmCorpus('{}/models/summaries_1p.mm'.format(basedir))
             logging.info("Writing corpus as topics to disk")
-            corpora.MmCorpus.serialize('{}/models/summaries_topics.mm'.format(basedir), lda[corpus])
-            corpus = corpora.MmCorpus('{}/models/summaries_topics.mm'.format(basedir))
+            corpora.MmCorpus.serialize('{}/models/summaries_topics_{}.mm'.format(basedir,modelfilesfx), lda[corpus])
+            corpus = corpora.MmCorpus('{}/models/summaries_topics_{}.mm'.format(basedir, modelfilesfx))
         else:
             logging.info("Creating corpus to generate summaries as bags of words")
             corpus = FanFictionCorpus(self.dictionary)
             logging.info("Writing corpus as topics to disk")
-            corpora.MmCorpus.serialize('{}/models/summaries_topics.mm'.format(basedir), lda[corpus])
-            corpus = corpora.MmCorpus('{}/models/summaries_topics.mm'.format(basedir))
+            corpora.MmCorpus.serialize('{}/models/summaries_topics_{}.mm'.format(basedir, modelfilesfx), lda[corpus])
+            corpus = corpora.MmCorpus('{}/models/summaries_topics_{}.mm'.format(basedir, modelfilesfx))
         conn = sqlite3.connect("/media/export/apps/dev/fanfiction/fanfiction_no_reviews.db")
-        logging.info("Connected")
+        logging.info("selecting readers with at least 5 favorite stories")
         
         # Select 100 readers  
         # with at least 5 favorites
         c=conn.execute("SELECT a.id, count(f.storyID) FROM authors a, author_favorites f WHERE f.authorID=a.id GROUP BY a.id HAVING count(f.storyID)>4")
-        logging.info("Executed")
         #readers = random.shuffle([row[0] for row in c])[:100]
-        readers = [row[0] for row in c][:1000]
+        readers = [row[0] for row in c][:100]
         c.close()
         mrrs=[]
-        logging.info("Evaluating 1000 readers")
+        logging.info("Evaluating 100 readers")
         for reader in readers:
-            c=conn.execute("SELECT f.storyID, s.summary FROM author_favorites f, stories s WHERE s.id=f.storyID AND f.authorID=?",reader)
-            favsummaries = random.shuffle([[row[0],row[1]] for row in c])
+            Query = "SELECT f.storyID, s.summary FROM author_favorites f, stories s WHERE s.id=f.storyID AND f.authorID={}".format(reader)
+            c=conn.execute(Query)
+            favsummaries = [(row[0],row[1]) for row in c]
+            if favsummaries is None:
+                logging.error("ERROR: Query failed to return favorites for reader {}".format(reader))
+                logging.error("QUERY: {}".format(Query))
+                continue
             split = int(len(favsummaries)*0.05)
             if split==0:
                 split=1
             heldout = favsummaries[:split]
             train = favsummaries[split:]
+            logging.info('Reader {} has {} favorites: {} for train, {} for eval'.format(reader, len(favsummaries), len(train), len(heldout)))
             thematrix = []
-            lda = models.ldamodel.LdaModel.load(modelfile)
             # Create a topic proportion matrix 
             # for all the favorite stories in train
             for row in train:
@@ -429,7 +435,7 @@ class OnlineLDAExperiment():
                 if summary:
                     story_word_counts = self.dictionary.doc2bow(self.tokenize(summary))
                     story_topic_proportions = lda[story_word_counts]
-                    thematrix.add(story_topic_proportions)
+                    thematrix.append(story_topic_proportions)
             heldoutvectors = []
             for row in heldout:
                 storyid = row[0]
@@ -437,30 +443,40 @@ class OnlineLDAExperiment():
                 if summary:
                     story_word_counts = self.dictionary.doc2bow(self.tokenize(summary))
                     story_topic_proportions = lda[story_word_counts]
-                    heldoutvectors.add(story_topic_proportions)
+                    heldoutvectors.append(story_topic_proportions)
             # Choose the most similar favorite story
             # to use for ranking
+            logging.debug("Scanning 10,000 stories from corpus")
             scores = []
+            doccount=0
             for vector in corpus:
+                #logging.info("Compare {} to {}".format(vector, thematrix[0]))
                 score = max([self.similarity(vector, fav) for fav in thematrix])
                 scores.append(score)
+                doccount+=1
+                if doccount % 10000 == 0 :
+                    break
+            logging.info("Scan complete; {} story summaries scanned. Sorting scores".format(doccount))
             scores.sort(reverse=True)
+            logging.info("Sorting complete. ")
             # Now check the heldout
             rrarr=[]
+            logging.info("Comparing held out set to favorites.")
             for heldoutvec in heldoutvectors:
-                score = max([self.similarity(heldoutvec, fav) for fav in thematrix])
+                evalscores=[self.similarity(heldoutvec, fav) for fav in thematrix]
+                score = max(evalscores)
                 
                 i=0
                 while scores[i]>=score and i<len(scores):
                     i=i+1 
-                rrarr.append(1/i)
+                rrarr.append(1.0/(float(i+1)))
             rdrmrr = np.average(rrarr)
-            logging.info("Reader {}: {:.5f}".format(reader, rdrmrr))
+            logging.info("Reader {}: MRR={:.5e}".format(reader, rdrmrr))
             mrrs.append(rdrmrr)
         mrr=np.average(mrrs)
         c.close()
         conn.close()
-        logging.info("Overall Results (MRR): {:.4f}".format(mrr))
+        logging.info("Overall Results (MRR): {:.4e}".format(mrr))
         return mrr
 # Want to collect fav and non-fav in equal proportions, 
 # then separate into two clusters using k-means. 
@@ -469,22 +485,19 @@ class OnlineLDAExperiment():
             # OK now I have a topic matrix of favorites for this reader
 
     def run_lda_on_summaries(self, n_topics=50, alpha='auto', eta='auto'):
-        if os.path.exists("summaries_1p.dict"):
+        basedir="/export/apps/dev/fanfiction"
+        if os.path.exists("{}/models/summaries_1p.dict".format(basedir)):
             logging.info("Loading dictionary from file")
-            self.dictionary = corpora.Dictionary.load("summaries_1p.dict")
+            self.dictionary = corpora.Dictionary.load("{}/models/summaries_1p.dict".format(basedir))
         else:
-            if os.path.exists("summaries.dict"):
-                logging.info("Loading dictionary from file")
-                self.dictionary = corpora.Dictionary.load("summaries.dict")
-            else:
-                conn = sqlite3.connect("/media/export/apps/dev/fanfiction/fanfiction_no_reviews.db")
-                logging.info("Selecting summaries from DB")
-                c=conn.execute("SELECT summary FROM stories WHERE language='English'")
-                logging.info("Saving vocab to dictionary")
-                
-                self.dictionary = corpora.Dictionary([[word for word in self.tokenize("{}".format(a[0]))] for a in c])
-                c.close()
-                conn.close()
+            conn = sqlite3.connect("{}/fanfiction_no_reviews.db".format(basedir))
+            logging.info("Selecting summaries from DB")
+            c=conn.execute("SELECT summary FROM stories WHERE language='English'")
+            logging.info("Saving vocab to dictionary")
+            
+            self.dictionary = corpora.Dictionary([[word for word in self.tokenize("{}".format(a[0]))] for a in c])
+            c.close()
+            conn.close()
             logging.info("Listing words that appear only once")
             once_ids = [tokenid for tokenid, docfreq in self.dictionary.dfs.iteritems() if docfreq == 1]
             logging.info("Filtering dictionary")
@@ -494,19 +507,8 @@ class OnlineLDAExperiment():
             
             #dictionary = corpora.Dictionary(summaries)
             logging.info("Writing dictionary to file")
-            self.dictionary.save('summaries_1p.dict');
+            self.dictionary.save('{}/models/summaries_1p.dict'.format(basedir));
         
-        if os.path.exists("summaries_1p.mm"):
-            logging.info("Loading corpus from disk")
-            corpus = corpora.MmCorpus('summaries_1p.mm')
-            #corpus = [dictionary.doc2bow(text) for text in summaries]
-        else:
-            logging.info("Creating corpus to generate summaries as bags of words")
-            corpus = FanFictionCorpus(self.dictionary)
-            logging.info("Saving corpus to disk")
-            corpora.MmCorpus.serialize('summaries_1p.mm', corpus)
-        
-        logging.info("Training model from corpus")
         vocabsize = len(self.dictionary.keys())
         if eta is None:
             etastr = 'nil'
@@ -524,12 +526,30 @@ class OnlineLDAExperiment():
             etastr = '{:.3f}'.format(eta) 
         if not alpha=='auto':
             alpha = float(alpha)
+        modelfile ="{}/models/lda1p_{}_k{}_a{}_e{}.model".format(basedir, __version__, n_topics, alpha, etastr) 
+        if os.path.exists(modelfile):
+            logging.warn("File exists: {}".format(modelfile))
+            logging.warn("I assume you don't want to overwrite it.")
+            logging.warn("If in fact you do, please move the existing file out of the way.")
+            return modelfile
+        if os.path.exists("{}/models/summaries_1p.mm".format(basedir)):
+            logging.info("Loading corpus from disk")
+            corpus = corpora.MmCorpus('{}/models/summaries_1p.mm'.format(basedir))
+            #corpus = [dictionary.doc2bow(text) for text in summaries]
+        else:
+            logging.info("Creating corpus to generate summaries as bags of words")
+            corpus = FanFictionCorpus(self.dictionary)
+            logging.info("Saving corpus to disk")
+            corpora.MmCorpus.serialize('{}/models/summaries_1p.mm'.format(basedir), corpus)
+        
+        logging.info("Training model from corpus")
         lda = models.ldamodel.LdaModel(corpus=corpus, alpha=alpha, eta=eta, id2word=self.dictionary, num_topics=n_topics, update_every=1, chunksize=20000, passes=1)
         
         logging.info("Saving model to disk")
-        lda.save("lda1p_{}_k{}_a{}_e{}.model".format(__version__, n_topics, alpha, etastr))
+        lda.save(modelfile)
         logging.info("DONE!")
-
+        return modelfile
+    
 class FanFictionCorpus():
     def __init__(self, dictionary):
         self.name = "Fan Fiction Corpus (c) 2015"
@@ -537,7 +557,7 @@ class FanFictionCorpus():
         
     def __iter__(self):
         conn = sqlite3.connect("/media/export/apps/dev/fanfiction/fanfiction_no_reviews.db")
-        logging.info("Connected")
+        logging.info("loading summaries from database")
         c=conn.execute("SELECT summary FROM stories WHERE language='English'")
         t = Topic("T")
         for row in c:
@@ -582,6 +602,7 @@ USAGE
         parser.add_argument("-e", "--eta", dest="eta", default=None, help="LDA eta parameter [default: %(default)s]")
         parser.add_argument("-i", "--num-iter", dest="iter", default="500", help="Number of iterations to use for LDA model fit [default: %(default)s]")
         parser.add_argument("-k", "--num-topics", dest="k", type=int, default="25", help="Number of topics to produce [default: %(default)s]")
+        parser.add_argument("-m", "--model-file", dest="modelfile", default=None, help="Number of topics to produce [default: %(default)s]")
         
         args = parser.parse_args()
         '''
@@ -593,10 +614,12 @@ USAGE
         tme.write_topics_to_file()
         '''
         ole = OnlineLDAExperiment()
-        #ole.run_lda_on_summaries(int(args.k), args.alpha, args.eta)
-        ole.evaluate_model()
+        if args.modelfile is None:
+            modelfile=ole.run_lda_on_summaries(int(args.k), args.alpha, args.eta)
+        else:
+            modelfile = args.modelfile
+        ole.evaluate_model(modelfile)
 
-        
     except KeyboardInterrupt:
         ### handle keyboard interrupt ###
         return 0
