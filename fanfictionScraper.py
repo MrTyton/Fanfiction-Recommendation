@@ -1,7 +1,7 @@
 import time
-from Fanfiction.scrapePage import scrapePage, scrapeReview
+from scrapePage import scrapePage, scrapeReview
 #from .SimpleProgress import SimpleProgress
-from Fanfiction.fanfictionClasses import Author, Review
+from fanfictionClasses import Author, Review
 import pickle
 #import threading
 import multiprocessing

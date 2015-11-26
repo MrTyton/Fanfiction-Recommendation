@@ -17,6 +17,7 @@ from nltk import word_tokenize
 import nltk
 import numpy as np
 from scipy import spatial
+from fanfictionClasses import Story, openStoryPage
 
 __all__ = []
 __version__ = 0.96
@@ -549,7 +550,23 @@ class OnlineLDAExperiment():
         lda.save(modelfile)
         logging.info("DONE!")
         return modelfile
+
+class StoryTextCorpus():
+    def __init__(self, dictionary):
+        self.dictionary = dictionary
     
+    def __iter__(self):    
+        conn = sqlite3.connect("/media/export/apps/dev/fanfiction/fanfiction_no_reviews.db")
+        logging.info("loading ids from database")
+        c=conn.execute("SELECT id, chapters FROM stories WHERE language='English'")
+        logging.info("loading text from the, um, inter-net")
+        t=Topic("T")
+        for row in c:
+            if row[0] is not None:
+                story_text = get_story_text(row[0], int(row[1]))
+                bow = self.dictionary.doc2bow(t.tokenize(story_text))
+                yield bow
+        
 class FanFictionCorpus():
     def __init__(self, dictionary):
         self.name = "Fan Fiction Corpus (c) 2015"
@@ -567,68 +584,31 @@ class FanFictionCorpus():
                 #[w for w in t.tokenize(summary.strip()) if w not in t.stopwords]
                 yield bow
             
-        
-def main(argv=None): # IGNORE:C0111
-    '''Command line options.'''
-    if argv is None:
-        argv = sys.argv
-    else:
-        sys.argv.extend(argv)
-    logging.basicConfig(format='%(asctime)s %(message)s', datefmt='%m/%d %I:%M:%S %p', level=logging.INFO)
-    program_name = os.path.basename(sys.argv[0])
-    program_version = "v%s" % __version__
-    program_build_date = str(__updated__)
-    #program_version_message = '%%(prog)s %s (%s)' % (program_version, program_build_date)
-    program_shortdesc = "Topic modeling with LDA"
-    logging.warning('{} {} starting ({}).'.format(program_name, program_version, program_build_date))
-    program_license = '''%s
+def get_story_text(storyID, chapters=10):
+    chapter_texts = []
+    for i in range(chapters):
+        curChapter = i + 1
+        url = "https://www.fanfiction.net/s/%d/%d/" % (storyID, curChapter)
+        page = openStoryPage(url)
+        if page is None: continue
+        try:
+            logging.info("Loading from {}".format(url))
+            start = page.index("<div class='storytext xcontrast_txt nocopy' id='storytext'>")
+            end = page.index("</div>\n</div>", start)
+            text = page[start+len("<div class='storytext xcontrast_txt nocopy' id='storytext'>"):end]
+            chapter_texts.append(text)
+        except Exception: continue
+    return ' '.join(chapter_texts)
 
-  Created by user_name on %s.
-  Copyright 2015 organization_name. All rights reserved.
+def get_connection():
+    return sqlite3.connect("/media/export/apps/dev/fanfiction/fanfiction_no_reviews.db")
 
-  Licensed under the Apache License 2.0
-  http://www.apache.org/licenses/LICENSE-2.0
-
-  Distributed on an "AS IS" basis without warranties
-  or conditions of any kind, either express or implied.
-
-USAGE
-''' % (program_shortdesc, str(__date__))
-    try:
-        # Setup argument parser
-        parser = ArgumentParser(description=program_license, formatter_class=RawDescriptionHelpFormatter)
-        parser.add_argument("-n", "--sample-size", dest="N", default="10000", help="Number of stories to sample for topic modeling [default: %(default)s]")
-        parser.add_argument("-a", "--alpha", dest="alpha", default="0.1", help="LDA alpha parameter [default: %(default)s]")
-        parser.add_argument("-e", "--eta", dest="eta", default=None, help="LDA eta parameter [default: %(default)s]")
-        parser.add_argument("-i", "--num-iter", dest="iter", default="500", help="Number of iterations to use for LDA model fit [default: %(default)s]")
-        parser.add_argument("-k", "--num-topics", dest="k", type=int, default="25", help="Number of topics to produce [default: %(default)s]")
-        parser.add_argument("-m", "--model-file", dest="modelfile", default=None, help="Number of topics to produce [default: %(default)s]")
-        
-        args = parser.parse_args()
-        '''
-        t = Topic("main")
-        (thematrix, vocab, storymap)=t.run_lda_on_summaries(int(args.N))
-        t.write_dimensions(vocab, storymap)
-        t.fit_model(thematrix, vocab, storymap, n_topics=int(args.k), n_iter=int(args.iter), alpha=float(args.alpha), eta=float(args.eta))
-        tme = TopicModelExperiment("LDA")
-        tme.write_topics_to_file()
-        '''
-        ole = OnlineLDAExperiment()
-        if args.modelfile is None:
-            modelfile=ole.run_lda_on_summaries(int(args.k), args.alpha, args.eta)
-        else:
-            modelfile = args.modelfile
-        ole.evaluate_model(modelfile)
-
-    except KeyboardInterrupt:
-        ### handle keyboard interrupt ###
-        return 0
-    except Exception as e:
-        logging.error("ERROR: {}".format(e))
-        logging.error(traceback.format_exc())
-    except: 
-        logging.error("Something's wrong.")
-    logging.error("GOOD BYE!")
-main()
-
-    
+def scrape_stories(storyIDs=None):
+    basedir = "/export/apps/dev/fanfiction"
+    logging.info("Loading dictionary from file")
+    dictionary = corpora.Dictionary.load("{}/models/summaries_1p.dict".format(basedir))
+    logging.info("Creating corpus to generate stories as bags of words")
+    corpus = StoryTextCorpus(dictionary)
+    logging.info("Writing corpus as topics to disk")
+    corpora.MmCorpus.serialize('{}/models/story_bags_{}.mm'.format(basedir, __version__), corpus, progress_cnt=100)
+   
