@@ -374,17 +374,27 @@ class OnlineLDAExperiment():
             self.stopwords.extend([x.strip() for x in stopin])
     
     def similarity(self, u, v):
-        return 1 - spatial.distance.cosine([x[1] for x in u], [y[1] for y in v])
+        return 1 - spatial.distance.cosine(u,v)
     
     def tokenize(self, text):
         return [x for x in word_tokenize(text.lower()) if x not in self.stopwords]
+    
+    def topic_map_to_vector(self, topic_map, k=100):
+        story_topic_vector = []
+        for i in range(k):
+            if i in topic_map:
+                story_topic_vector.append(topic_map[i])
+            else:
+                story_topic_vector.append(0.000)
+        return story_topic_vector
     
     def evaluate_model(self, modelfile="/export/apps/dev/fanfiction/models/lda1p_0.93_k5_a1.0_enil.model"):
         basedir="/export/apps/dev/fanfiction"
         logging.info("Loading model from file")
         lda = models.ldamodel.LdaModel.load(modelfile)
         modelfilesfx = "_".join(modelfile.split("/")[-1].split(".model")[0].split("_")[1:])
-        logging.info("Suffix = _{}".format(modelfilesfx))
+        k = int(modelfilesfx.split("_")[1][1:])
+        logging.info("Suffix = _{}; K={}".format(modelfilesfx, k))
         logging.info("Loading dictionary from file")
         self.dictionary = corpora.Dictionary.load("{}/models/summaries_1p.dict".format(basedir))
         if os.path.exists("{}/models/summaries_topics_{}.mm".format(basedir, modelfilesfx)):
@@ -414,7 +424,7 @@ class OnlineLDAExperiment():
         mrrs=[]
         logging.info("Evaluating 100 readers")
         for reader in readers:
-            Query = "SELECT f.storyID, s.summary FROM author_favorites f, stories s WHERE s.id=f.storyID AND f.authorID={}".format(reader)
+            Query = "SELECT f.storyID, s.summary FROM author_favorites f, stories s WHERE s.id=f.storyID AND f.authorID={} AND s.language='English'".format(reader)
             c=conn.execute(Query)
             favsummaries = [(row[0],row[1]) for row in c]
             if favsummaries is None:
@@ -435,16 +445,18 @@ class OnlineLDAExperiment():
                 summary = row[1].strip()
                 if summary:
                     story_word_counts = self.dictionary.doc2bow(self.tokenize(summary))
-                    story_topic_proportions = lda[story_word_counts]
-                    thematrix.append(story_topic_proportions)
+                    story_topic_proportions = dict((x,y) for (x,y) in lda[story_word_counts])
+                    story_topic_vector = self.topic_map_to_vector(story_topic_proportions, int(k))
+                    
+                    thematrix.append(story_topic_vector)
             heldoutvectors = []
             for row in heldout:
                 storyid = row[0]
                 summary = row[1].strip()
                 if summary:
                     story_word_counts = self.dictionary.doc2bow(self.tokenize(summary))
-                    story_topic_proportions = lda[story_word_counts]
-                    heldoutvectors.append(story_topic_proportions)
+                    story_topic_proportions = dict((x,y) for (x,y) in lda[story_word_counts])
+                    heldoutvectors.append(self.topic_map_to_vector(story_topic_proportions, k))
             # Choose the most similar favorite story
             # to use for ranking
             logging.debug("Scanning 10,000 stories from corpus")
@@ -452,14 +464,15 @@ class OnlineLDAExperiment():
             doccount=0
             for vector in corpus:
                 #logging.info("Compare {} to {}".format(vector, thematrix[0]))
-                score = max([self.similarity(vector, fav) for fav in thematrix])
+                story_topic_proportions = dict((x,y) for (x,y) in vector)
+                score = max([self.similarity(self.topic_map_to_vector(story_topic_proportions, k), fav) for fav in thematrix])
                 scores.append(score)
                 doccount+=1
                 if doccount % 10000 == 0 :
                     break
             logging.info("Scan complete; {} story summaries scanned. Sorting scores".format(doccount))
             scores.sort(reverse=True)
-            logging.info("Sorting complete. ")
+            logging.debug("Sorting complete. ")
             # Now check the heldout
             rrarr=[]
             logging.info("Comparing held out set to favorites.")

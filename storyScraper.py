@@ -1,14 +1,17 @@
 from __future__ import division
 
+from HTMLParser import HTMLParser
 import logging
+import os
+import random
 import sqlite3
 import sys
-import os
 
 from gensim import corpora
+
 from fanfictionClasses import openStoryPage
 from topic import Topic
-from HTMLParser import HTMLParser
+
 
 __all__ = []
 __version__ = 0.97
@@ -47,26 +50,37 @@ class StoryBOWCorpus():
                 yield bow
 
 class StoryFavCorpus():
-    def __init__(self, minfavs=5):
+    def __init__(self, minfavs=50):
         self.minfavs = minfavs
         
     def __iter__(self):    
         conn = sqlite3.connect("/media/export/apps/dev/fanfiction/fanfiction_no_reviews.db")
         logging.info("loading ids from database")
-        c=conn.execute("SELECT a.id, count(f.storyID) FROM authors a, author_favorites f WHERE f.authorID=a.id GROUP BY a.id HAVING count(f.storyID)>4")
+        c=conn.execute("SELECT a.id, count(f.storyID) FROM authors a, author_favorites f WHERE f.authorID=a.id GROUP BY a.id HAVING count(f.storyID)>{}".format(self.minfavs-1))
         #readers = random.shuffle([row[0] for row in c])[:100]
-        readers = [row[0] for row in c]
+        readers = []
+        storycount = 0
+        for row in c:
+            readers.append(row[0]) 
+            storycount +=int(row[1])
+        
         c.close()
-        logging.info("loading stories from {} readers".format(len(readers)))
+        logging.info("loading {} stories from {} readers".format(storycount, len(readers)))
         #c=conn.execute("SELECT id, chapters FROM stories WHERE language='English'")
         logging.info("loading text from the, um, inter-net")
+        random.shuffle(readers)
         for reader in readers:
-            c=conn.execute("SELECT f.storyID, s.chapters FROM author_favorites f, stories s WHERE f.authorID={} AND s.id=f.storyID".format(int(reader)))
+            logging.info("authorID={}".format(reader))
+            c=conn.execute("SELECT f.storyID, s.chapters, s.language FROM author_favorites f, stories s WHERE f.authorID={} AND s.id=f.storyID".format(int(reader)))
             for row in c:
+                
+                if row[2] is not None and row[2]!='English':
+                    logging.debug("Skipping non-English ({}) story ID {}".format(row[2], row[0]))
+                    continue
                 if row[0] is not None:
-                    yield row
+                    yield [row[0],row[1]]
 
-        
+
 def get_story_text(storyID, chapters=10):
     chapter_texts = []
     for i in range(chapters):
@@ -105,8 +119,9 @@ def scrape_story_texts(storyIDs=None):
             pass
         storycount=storycount+1
         if os.path.exists('{}/{}.txt'.format(storydir, sid)):
-            logging.info("Skipping {}, already exists".format(sid))
+            logging.debug("Skipping {}, already exists".format(sid))
         else:
+            logging.info("Writing storyID={}".format(sid))
             storytext = get_story_text(int(sid), int(chapters))
             with open('{}/{}.txt'.format(storydir, sid), 'w') as storyout:
                 storyout.write('{}\n'.format(storytext))
