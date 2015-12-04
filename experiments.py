@@ -7,9 +7,9 @@ import argparse
 import topic
 
 __all__ = []
-__version__ = 0.96
+__version__ = 0.97
 __date__ = '2015-11-20'
-__updated__ = '2015-11-25'
+__updated__ = '2015-12-03'
 
 def main(argv=None): # IGNORE:C0111
     '''Command line options.'''

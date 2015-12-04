@@ -20,9 +20,9 @@ from scipy import spatial
 from fanfictionClasses import Story, openStoryPage
 
 __all__ = []
-__version__ = 0.96
+__version__ = 0.97
 __date__ = '2015-11-20'
-__updated__ = '2015-11-25'
+__updated__ = '2015-12-03'
 
 class Topic():
     def __init__(self, name):
@@ -102,7 +102,7 @@ class Topic():
                     logging.info("{} summaries read after {:.3f} seconds".format(summaries_read, ctime-starttime))
                 for _ in vocab:
                     story_word_counts.append(0)
-                c2 = conn.execute("SELECT summary FROM stories WHERE id={}".format(storyid))
+                c2 = conn.execute("SELECT (name || ' ' || summary) as abstract FROM stories WHERE id={}".format(storyid))
                 for row in c2:
                     summary = row[0].strip()
                 c2.close()
@@ -224,14 +224,14 @@ class TopicModelExperiment():
         storyids = random.shuffle([row[0] for row in c])
         
         for reader in readers:
-            c=conn.execute("SELECT f.storyID, s.summary FROM author_favorites f, stories s WHERE s.id=f.storyID AND f.authorID=?", int(reader))
+            c=conn.execute("SELECT f.storyID, (s.name || ' ' || s.summary) as abstract FROM author_favorites f, stories s WHERE s.id=f.storyID AND f.authorID=?", int(reader))
             thematrix = []
             for row in c:
                 #storyid = row[0]
                 summary = row[1].strip()
                 story_word_counts=self.text_to_vector(summary)[0]
                 thematrix.add(story_word_counts)
-                c2 = conn.execute("SELECT summary FROM stories WHERE id=?", storyids[0])
+                c2 = conn.execute("SELECT (name || ' ' || summary) as abstract FROM stories WHERE id=?", storyids[0])
                 storyids = storyids[1:]
                 for row2 in c2:
                     summary = row2[0].strip()
@@ -253,7 +253,7 @@ class TopicModelExperiment():
     def write_topics_to_file(self, storytopicsfile=None, newvocabfile=None):
         conn = sqlite3.connect("/media/export/apps/dev/fanfiction/fanfiction_no_reviews.db")
         logging.info("Connected")
-        c=conn.execute("SELECT id, summary FROM stories WHERE language='English'")
+        c=conn.execute("SELECT id, (name || ' ' || summary) as abstract FROM stories WHERE language='English'")
         logging.info("Executed")
         if( storytopicsfile is None ):
             storytopicsfile = "story_topics.csv" 
@@ -424,7 +424,7 @@ class OnlineLDAExperiment():
         mrrs=[]
         logging.info("Evaluating 100 readers")
         for reader in readers:
-            Query = "SELECT f.storyID, s.summary FROM author_favorites f, stories s WHERE s.id=f.storyID AND f.authorID={} AND s.language='English'".format(reader)
+            Query = "SELECT f.storyID, (s.name || ' ' || s.summary) as abstract FROM author_favorites f, stories s WHERE s.id=f.storyID AND f.authorID={} AND s.language='English'".format(reader)
             c=conn.execute(Query)
             favsummaries = [(row[0],row[1]) for row in c]
             if favsummaries is None:
@@ -506,7 +506,7 @@ class OnlineLDAExperiment():
         else:
             conn = sqlite3.connect("{}/fanfiction_no_reviews.db".format(basedir))
             logging.info("Selecting summaries from DB")
-            c=conn.execute("SELECT summary FROM stories WHERE language='English'")
+            c=conn.execute("SELECT (name || ' ' || summary) as abstract FROM stories WHERE language='English'")
             logging.info("Saving vocab to dictionary")
             
             self.dictionary = corpora.Dictionary([[word for word in self.tokenize("{}".format(a[0]))] for a in c])
@@ -588,7 +588,7 @@ class FanFictionCorpus():
     def __iter__(self):
         conn = sqlite3.connect("/media/export/apps/dev/fanfiction/fanfiction_no_reviews.db")
         logging.info("loading summaries from database")
-        c=conn.execute("SELECT summary FROM stories WHERE language='English'")
+        c=conn.execute("SELECT (name || ' ' || summary) as abstract FROM stories WHERE language='English'")
         t = Topic("T")
         for row in c:
             if row[0] is not None:
