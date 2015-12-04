@@ -42,6 +42,7 @@ USAGE
         parser = argparse.ArgumentParser(description=program_license, formatter_class=argparse.RawDescriptionHelpFormatter)
         parser.add_argument("-n", "--sample-size", dest="N", default="10000", help="Number of stories to sample for topic modeling [default: %(default)s]")
         parser.add_argument("-a", "--alpha", dest="alpha", default="1.0", help="LDA alpha parameter [default: %(default)s]")
+        parser.add_argument("-d", "--dir", dest="basedir", default="/export/apps/dev/fanfiction", help="Directory where to find the database and to write output")
         parser.add_argument("-e", "--eta", dest="eta", default=None, help="LDA eta parameter [default: %(default)s]")
         parser.add_argument("-i", "--num-iter", dest="iter", default="500", help="Number of iterations to use for LDA model fit [default: %(default)s]")
         parser.add_argument("-k", "--num-topics", dest="k", type=int, default="50", help="Number of topics to produce [default: %(default)s]")
@@ -56,12 +57,12 @@ USAGE
         tme = TopicModelExperiment("LDA")
         tme.write_topics_to_file()
         '''
-        ole = topic.OnlineLDAExperiment()
+        ole = topic.OnlineLDAExperiment(args.basedir)
         if args.modelfile is None:
             modelfile=ole.run_lda_on_summaries(int(args.k), args.alpha, args.eta)
         else:
             modelfile = args.modelfile
-        ole.evaluate_model(modelfile)
+        #ole.evaluate_model(modelfile)
     except KeyboardInterrupt:
         ### handle keyboard interrupt ###
         return 0
