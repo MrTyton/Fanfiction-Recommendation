@@ -45,7 +45,7 @@ USAGE
         parser.add_argument("-d", "--dir", dest="basedir", default="/export/apps/dev/fanfiction", help="Directory where to find the database and to write output")
         parser.add_argument("-e", "--eta", dest="eta", default=None, help="LDA eta parameter [default: %(default)s]")
         parser.add_argument("-i", "--num-iter", dest="iter", default="500", help="Number of iterations to use for LDA model fit [default: %(default)s]")
-        parser.add_argument("-k", "--num-topics", dest="k", type=int, default="50", help="Number of topics to produce [default: %(default)s]")
+        parser.add_argument("-k", "--num-topics", dest="k", type=int, default="150", help="Number of topics to produce [default: %(default)s]")
         parser.add_argument("-m", "--model-file", dest="modelfile", default=None, help="Number of topics to produce [default: %(default)s]")
         
         args = parser.parse_args()
