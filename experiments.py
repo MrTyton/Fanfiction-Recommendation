@@ -50,19 +50,29 @@ USAGE
         
         args = parser.parse_args()
         '''
-        t = Topic("main")
-        (thematrix, vocab, storymap)=t.run_lda_on_summaries(int(args.N))
-        t.write_dimensions(vocab, storymap)
-        t.fit_model(thematrix, vocab, storymap, n_topics=int(args.k), n_iter=int(args.iter), alpha=float(args.alpha), eta=float(args.eta))
-        tme = TopicModelExperiment("LDA")
-        tme.write_topics_to_file()
+        
         '''
-        ole = topic.OnlineLDAExperiment(args.basedir)
+        ole = topic.OnlineLDAExperiment(int(args.k), args.basedir)
         if args.modelfile is None:
             modelfile=ole.run_lda_on_summaries(int(args.k), args.alpha, args.eta)
         else:
             modelfile = args.modelfile
         #ole.evaluate_model(modelfile)
+        '''
+        To evaluate, do something like...
+        
+        ole = topic.OnlineLDAExperiment(int(args.k), args.basedir, modelfile=modelfile)
+        eval = Evaluator(ole) # implements/overrides favorite_likelihood(self, storyID, favorites)
+        
+        (in parallel)...
+        for each reader (author): 
+            csv = eval.evaluate_reader(reader)
+        
+        for each csv:
+            results.append(load_csv(csv))
+        compute_statistics(results)
+        '''
+        
     except KeyboardInterrupt:
         ### handle keyboard interrupt ###
         return 0

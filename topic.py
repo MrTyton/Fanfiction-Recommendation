@@ -541,6 +541,8 @@ class OnlineLDAExperiment():
             self.dictionary = corpora.Dictionary.load("{}/models/summaries_1p.dict".format(self.basedir))
         else:
             conn = sqlite3.connect("{}/fanfiction_no_reviews.db".format(self.basedir))
+            
+            # Change this if using folds
             logging.info("Selecting summaries from DB")
             c=conn.execute("SELECT (name || ' ' || summary) as abstract FROM stories WHERE language='English'")
             logging.info("Saving vocab to dictionary")
