@@ -414,7 +414,7 @@ class OnlineLDAExperiment():
         else:
             rows = [x for x in c]
             if len(rows)==0:
-                continue
+                return []
             row = rows[0]
             summary = row[0].strip()
             if summary:
@@ -434,6 +434,9 @@ class OnlineLDAExperiment():
     '''
     def favorite_likelihood(self, storyID, favorites):
         story_topic_vector = self.get_topic_vector_for_story(storyID)
+        if len(story_topic_vector)==0:
+            logging.error("No vector for storyID={}".format(storyID))
+            return 0.0
         logging.info("favorite_lh({}, {})".format(storyID, favorites))
         score = max([self.similarity(story_topic_vector, self.get_topic_vector_for_story(fav)) for fav in favorites])
         return score
