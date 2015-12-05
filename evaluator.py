@@ -27,7 +27,7 @@ class Evaluator():
 			
 	def evaluate(self):
 		results = {}
-		out = "{}/results.txt"
+		out = "{}/results.txt".format(self.resultsdir)
 		rout=open(out, "w")
 		for cur in self.authorIDs:
 			#total = {}
