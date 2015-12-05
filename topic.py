@@ -423,7 +423,7 @@ class OnlineLDAExperiment():
                 story_topic_vector = self.topic_map_to_vector(story_topic_proportions, int(self.numtopics))
                 self.story_vector_cache[storyID] = story_topic_vector
             else:
-                raise Exception("No summary found for story {}".format(storyID))
+                logging.error("No summary found for story {}".format(storyID))
         return story_topic_vector
     
     '''
