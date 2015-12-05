@@ -66,8 +66,9 @@ USAGE
         #To evaluate, do something like...
         
         oleg = topic.OnlineLDAExperiment(int(args.k), args.basedir, modelfile=modelfile)
+        oleg.run_lda_on_summaries(int(args.k), args.alpha, args.eta)
         oleg.prep_for_eval(int(args.fold))
-        eval = evaluator.Evaluator(ole, datadir=args.basedir, resultsdir="{}/results".format(args.basedir)) # implements/overrides favorite_likelihood(self, storyID, favorites)
+        eval = evaluator.Evaluator(oleg, datadir=args.basedir, resultsdir="{}/results".format(args.basedir)) # implements/overrides favorite_likelihood(self, storyID, favorites)
         eval.evaluate()
         #(in parallel)...
         #for each reader (author): 
