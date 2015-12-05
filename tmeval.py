@@ -7,6 +7,7 @@ import argparse
 import logging
 import os
 import traceback
+import topic
 
 __all__ = []
 __version__ = 0.98
