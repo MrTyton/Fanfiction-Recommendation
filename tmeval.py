@@ -6,6 +6,7 @@ import evaluator
 import argparse
 import logging
 import os
+import traceback
 
 __all__ = []
 __version__ = 0.98
