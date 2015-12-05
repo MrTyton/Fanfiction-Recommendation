@@ -57,7 +57,7 @@ USAGE
             modelfile=ole.run_lda_on_summaries(int(args.k), args.alpha, args.eta)
         else:
             modelfile = args.modelfile
-        #ole.evaluate_model(modelfile)
+            ole.evaluate_model(modelfile)
         '''
         To evaluate, do something like...
         
