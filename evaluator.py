@@ -34,6 +34,8 @@ class Evaluator():
 				c.execute("SELECT input FROM author_insert_splits_%d WHERE authorID = %d" % (self.fold, cur)); favorites = tuple(sorted([x[0] for x in c.fetchall()]))
 
 			#for i,stor in enumerate(self.storyIDs):
+			if len(favorites)==0:
+				logging.error("There are no favorites for author={}. Skipping.".format(cur))
 			toDo = self.recommender.populate(favorites)
 			if toDo is not None:
 				toDo = list(set(self.storyIDs) & toDo)
