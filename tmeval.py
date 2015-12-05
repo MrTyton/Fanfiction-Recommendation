@@ -4,9 +4,10 @@ import sys
 import pickle
 import evaluator
 import argparse
+import logging
 
 __all__ = []
-__version__ = 0.97
+__version__ = 0.98
 __date__ = '2015-11-20'
 __updated__ = '2015-12-03'
 
