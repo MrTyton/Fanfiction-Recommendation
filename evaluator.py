@@ -36,6 +36,7 @@ class Evaluator():
 			#for i,stor in enumerate(self.storyIDs):
 			if len(favorites)==0:
 				logging.error("There are no favorites for author={}. Skipping.".format(cur))
+				continue
 			toDo = self.recommender.populate(favorites)
 			if toDo is not None:
 				toDo = list(set(self.storyIDs) & toDo)

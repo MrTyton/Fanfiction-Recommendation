@@ -412,7 +412,10 @@ class OnlineLDAExperiment():
         if c is None:
             raise Exception("Bad query for storyID = {}".format(id))
         else:
-            row = [x for x in c][0]
+            rows = [x for x in c]
+            if len(rows)==0:
+                continue
+            row = rows[0]
             summary = row[0].strip()
             if summary:
                 story_word_counts = self.dictionary.doc2bow(self.tokenize(summary))
