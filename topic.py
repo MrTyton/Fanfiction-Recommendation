@@ -17,6 +17,7 @@ import numpy as np
 from scipy import spatial
 from fanfictionClasses import openStoryPage
 from _sqlite3 import Cursor
+from sympy.mpmath.calculus.extrapolation import fold_finite
 
 __all__ = []
 __version__ = 0.98
@@ -371,7 +372,13 @@ class OnlineLDAExperiment():
         if modelfile is not None:
             self.lda = models.ldamodel.LdaModel.load(modelfile)
 
+    def prep_for_eval(self, fold, penalty=20):
+        self.fold = fold
+        self.penalty=penalty
         
+    def populate(self,favorites):
+        pass
+    
     def load_stopwords(self):
         self.stopwords = ['...','(',')',',','.','?','!','"','\'', ';', ':','\'s','``','\'\'','n\'t','\'re','\'d','\'m','au']
         self.stopwords.extend(nltk.corpus.stopwords.words('english'))
