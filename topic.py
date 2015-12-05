@@ -403,6 +403,7 @@ class OnlineLDAExperiment():
         return story_topic_vector
     
     def get_topic_vector_for_story(self, storyID):
+        logging.info("Getting topic vector for storyID={}".format(storyID))
         if storyID in self.story_vector_cache:
             story_topic_vector = self.story_vector_cache[storyID]
             return story_topic_vector
@@ -430,6 +431,7 @@ class OnlineLDAExperiment():
     '''
     def favorite_likelihood(self, storyID, favorites):
         story_topic_vector = self.get_topic_vector_for_story(storyID)
+        logging.info("favorite_lh({}, {})".format(storyID, favorites))
         score = max([self.similarity(story_topic_vector, self.get_topic_vector_for_story(fav)) for fav in favorites])
         return score
         
