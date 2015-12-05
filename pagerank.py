@@ -137,31 +137,32 @@ def combine_cluster(id):
                 #    q=0
                     #print "Database %d excepted on values %s" % (id, (a, b)), e
             #print "Added %d links, discarded %d" % (len(items) - failed, failed)
-    mypath = "./"
+    mypath = "H:/Fanfiction Data/test/Clusterized"
     onlyfiles = [ f for f in listdir(mypath) if isfile(join(mypath,f)) ]
     onlyfiles = [x for x in onlyfiles if '.db' in x and x != 'fanfiction_no_reviews.db']
+    onlyfiles = [mypath + "/" + x for x in onlyfiles]
     shuffle(onlyfiles)
     onlyfiles = natsorted(onlyfiles)
     #onlyfiles.reverse()
     print "Thread %d starting crawl through files" % id
     for curfile in onlyfiles:
         print "Crawling through %s on thread %d" % (curfile, id)
-        while True:
-            try:
-                vals = [x for x in get_generator("SELECT * FROM links WHERE node BETWEEN %d AND %d" % (minval, maxval), curfile)]
-                break
-            except sqlite3.DatabaseError as e:
-                print "WTF fix this"
-                raw_input()
+        #while True:
+            #try:
+        vals = [x for x in get_generator("SELECT * FROM links WHERE node BETWEEN %d AND %d" % (minval, maxval), curfile)]
+                #break
+            #except sqlite3.DatabaseError as e:
+            #    print "WTF fix this"
+            #    raw_input()
         dump(vals)
     
     print "Thread %d creating outcounts" % id
     conn = sqlite3.connect("C:/Users/Joshua/Documents/Cluster/fanfiction_sorted_links_%d.db" % id)
     c = conn.cursor()
-    c.execute("CREATE TABLE outcounts (node int PRIMARY KEY, nodecount int)")
-    c.execute("INSERT INTO outcounts SELECT node, count(node) FROM links GROUP BY node")
-    c.execute("SELECT links.node, outcounts.nodecount, GROUP_CONCAT(links.outlink) FROM links JOIN outcounts ON links.node = outcounts.node GROUP BY links.node ORDER BY COUNT(links.node) ASC")
-    data = deepcopy(c.fetchall())
+    #c.execute("CREATE TABLE outcounts (node int PRIMARY KEY, nodecount int)")
+    #c.execute("INSERT INTO outcounts SELECT node, count(node) FROM links GROUP BY node")
+    c.execute("SELECT node, COUNT(node), GROUP_CONCAT(outlink) FROM links GROUP BY node ORDER BY COUNT(node) ASC")
+    data = c.fetchall()
     conn.close()
         
     print "Thread %d converting to csv" % id
@@ -180,10 +181,12 @@ def combine_cluster(id):
     
 if __name__ == "__main__":
    #main(int(sys.argv[1])-1)
-   timer = SimpleProgress(45)
+   start = int(sys.argv[1])
+   end = int(sys.argv[2])
+   timer = SimpleProgress(start-end)
    t = 0
    timer.start_progress()
-   for i in range(5, 50, 1):
+   for i in range(start, end, 1):
        print timer.update(t)
        combine_cluster(i)
        t += 1
