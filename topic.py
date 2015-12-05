@@ -408,10 +408,10 @@ class OnlineLDAExperiment():
             return story_topic_vector
         conn = get_connection(self.basedir)
         c=conn.execute("SELECT (name || ' ' || summary) as abstract FROM stories WHERE language='English' and id={}".format(storyID))
-        if c is None or len(c)!=1:
+        if c is None:
             raise Exception("Bad query for storyID = {}".format(id))
         else:
-            row = c[0]
+            row = [x for x in c][0]
             summary = row[0].strip()
             if summary:
                 story_word_counts = self.dictionary.doc2bow(self.tokenize(summary))
