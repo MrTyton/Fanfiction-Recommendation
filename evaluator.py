@@ -5,18 +5,20 @@ import pickle
 
 
 class Evaluator():
-	def __init__(self, recommender, storyIDs = None, authorIDs = None, full=False, split=0):
+	def __init__(self, recommender, storyIDs = None, authorIDs = None, full=False, split=0, datadir="/users/jegang",resultsdir="../results"):
 		self.recommender = recommender
 		self.fold = split
+		self.datadir = datadir
+		self.resultsdir = resultsdir
 		if storyIDs is None:
-			with sqlite3.connect("/users/jegang/fanfiction_no_reviews.db") as conn:
+			with sqlite3.connect("{}/fanfiction_no_reviews.db".format(self.datadir)) as conn:
 				c = conn.cursor()
 				c.execute("SELECT DISTINCT storyID FROM author_favorites") if not full else c.execute("SELECT id FROM stories")
 				self.storyIDs = [x[0] for x in c.fetchall()]
 		else:
 			self.storyIDs = storyIDs
 		if authorIDs is None:
-			with sqlite3.connect("/users/jegang/fanfiction_no_reviews.db") as conn:
+			with sqlite3.connect("{}/fanfiction_no_reviews.db".format(self.datadir)) as conn:
 				c = conn.cursor()
 				c.execute("SELECT DISTINCT authorID FROM author_favorites")
 				self.authorIDs = [x[0] for x in c.fetchall()]
@@ -27,7 +29,7 @@ class Evaluator():
 		results = {}
 		for cur in self.authorIDs:
 			#total = {}
-			with sqlite3.connect("/users/jegang/author_splits_%d.db" % self.fold) as conn:
+			with sqlite3.connect("{}/author_splits_{}.db".format(self.datadir, self.fold)) as conn:
 				c = conn.cursor()
 				c.execute("SELECT input FROM author_insert_splits_%d WHERE authorID = %d" % (self.fold, cur)); favorites = tuple(sorted([x[0] for x in c.fetchall()]))
 
@@ -47,7 +49,7 @@ class Evaluator():
 			results[cur] = total
 		
 		for auth in results:
-			with open("../results/%d_split_%d.csv" % (auth, self.fold), "w") as fp:
+			with open("{}/{}_split_{}.csv".format(self.resultsdir,auth, self.fold), "w") as fp:
 				w = csv.DictWriter(fp, results[auth].keys())
 				w.writeheader()
 				w.writerow(results[auth])
@@ -63,6 +65,7 @@ class base_cf():
 		if favorites not in self.done_favorite_lists: 
 			with sqlite3.connect("/users/jegang/author_splits_%d.db" % self.fold) as conn:
 				c = conn.cursor()
+				# other stories from authors with these favorites
 				c.execute("SELECT DISTINCT input FROM author_insert_splits_%d WHERE authorID IN (SELECT authorID FROM author_insert_splits_%d WHERE input IN %s) AND input NOT IN %s" % (self.fold, self.fold, str(favorites), str(favorites)))
 				potentials = [x[0] for x in c.fetchall()]
 				self.done_favorite_lists[favorites] = set(potentials)
