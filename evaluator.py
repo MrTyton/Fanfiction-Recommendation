@@ -27,6 +27,8 @@ class Evaluator():
 			
 	def evaluate(self):
 		results = {}
+		out = "{}/results.txt"
+		rout=open(out, "w")
 		for cur in self.authorIDs:
 			#total = {}
 			with sqlite3.connect("{}/author_splits_{}.db".format(self.datadir, self.fold)) as conn:
@@ -50,6 +52,7 @@ class Evaluator():
 			
 			total = {stor:self.recommender.favorite_likelihood(stor,favorites) for stor in toDo}
 			results[cur] = total
+			rout.write("{},{},{}\n".format(cur,self.fold,total))
 		
 		for auth in results:
 			with open("{}/{}_split_{}.csv".format(self.resultsdir,auth, self.fold), "w") as fp:
