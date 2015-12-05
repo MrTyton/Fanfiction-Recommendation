@@ -403,7 +403,7 @@ class OnlineLDAExperiment():
         return story_topic_vector
     
     def get_topic_vector_for_story(self, storyID):
-        logging.info("Getting topic vector for storyID={}".format(storyID))
+        logging.debug("Getting topic vector for storyID={}".format(storyID))
         if storyID in self.story_vector_cache:
             story_topic_vector = self.story_vector_cache[storyID]
             return story_topic_vector
@@ -423,7 +423,7 @@ class OnlineLDAExperiment():
                 story_topic_vector = self.topic_map_to_vector(story_topic_proportions, int(self.numtopics))
                 self.story_vector_cache[storyID] = story_topic_vector
             else:
-                raise Exception("No summary found for story {}".format(storyID))
+                logging.error("No summary found for story {}".format(storyID))
         return story_topic_vector
     
     '''
@@ -437,7 +437,7 @@ class OnlineLDAExperiment():
         if len(story_topic_vector)==0:
             logging.error("No vector for storyID={}".format(storyID))
             return 0.0
-        logging.info("favorite_lh({}, {})".format(storyID, favorites))
+        logging.debug("favorite_lh({}, {})".format(storyID, favorites))
         score = max([self.similarity(story_topic_vector, self.get_topic_vector_for_story(fav)) for fav in favorites])
         return score
         
