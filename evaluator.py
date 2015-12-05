@@ -2,7 +2,7 @@ import sqlite3
 import csv
 import sys
 import pickle
-
+import logging
 
 class Evaluator():
 	def __init__(self, recommender, storyIDs = None, authorIDs = None, full=False, split=0, datadir="/users/jegang",resultsdir="../results"):
