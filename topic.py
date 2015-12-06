@@ -20,9 +20,9 @@ from _sqlite3 import Cursor
 from sympy.mpmath.calculus.extrapolation import fold_finite
 
 __all__ = []
-__version__ = 0.98
+__version__ = 0.99
 __date__ = '2015-11-20'
-__updated__ = '2015-12-03'
+__updated__ = '2015-12-05'
 
 class Topic():
     def __init__(self, basedir):
@@ -364,17 +364,19 @@ class VariationalEM():
 
 '''
 class OnlineLDAExperiment():
-    def __init__(self, numtopics=150, basedir="/export/apps/dev/fanfiction", modelfile=None):
+    def __init__(self, numtopics=150, modelfile=None, basedir="/export/apps/dev/fanfiction"):
         self.basedir=basedir
         self.load_stopwords()
         self.numtopics = numtopics
         self.story_vector_cache=dict()
         if modelfile is not None:
             self.lda = models.ldamodel.LdaModel.load(modelfile)
-
+        self.resout=None
+        
     def prep_for_eval(self, fold, penalty=20):
         self.fold = fold
         self.penalty=penalty
+        self.resout = open("{}/results/results_k{}_{}.txt".format(self.basedir,self.numtopics, fold), "a")
         
     def populate(self,favorites):
         pass
@@ -408,12 +410,13 @@ class OnlineLDAExperiment():
             story_topic_vector = self.story_vector_cache[storyID]
             return story_topic_vector
         conn = get_connection(self.basedir)
-        c=conn.execute("SELECT (name || ' ' || summary) as abstract FROM stories WHERE language='English' and id={}".format(storyID))
+        c=conn.execute("SELECT (name || ' ' || summary) as abstract FROM stories WHERE language='English' and id={}".format(int(storyID)))
         if c is None:
-            raise Exception("Bad query for storyID = {}".format(id))
+            raise Exception("Bad query for storyID = {}".format(storyID))
         else:
             rows = [x for x in c]
             if len(rows)==0:
+                logging.debug("No record for story ID={}????".format(storyID))
                 return []
             row = rows[0]
             summary = row[0].strip()
@@ -422,9 +425,9 @@ class OnlineLDAExperiment():
                 story_topic_proportions = dict((x,y) for (x,y) in self.lda[story_word_counts])
                 story_topic_vector = self.topic_map_to_vector(story_topic_proportions, int(self.numtopics))
                 self.story_vector_cache[storyID] = story_topic_vector
+                return story_topic_vector
             else:
                 logging.error("No summary found for story {}".format(storyID))
-        return story_topic_vector
     
     '''
       storyID - ID of story to evaluate
@@ -432,13 +435,14 @@ class OnlineLDAExperiment():
       
       returns - 0.000 - 1.000, representing likelihood that the story is a favorite, given list of favorites. 
     '''
-    def favorite_likelihood(self, storyID, favorites):
+    def favorite_likelihood(self, authorID, storyID, favorites):
         story_topic_vector = self.get_topic_vector_for_story(storyID)
-        if len(story_topic_vector)==0:
-            logging.error("No vector for storyID={}".format(storyID))
+        if story_topic_vector is None or len(story_topic_vector)==0:
+            logging.debug("No vector for storyID={}".format(storyID))
             return 0.0
         logging.debug("favorite_lh({}, {})".format(storyID, favorites))
         score = max([self.similarity(story_topic_vector, self.get_topic_vector_for_story(fav)) for fav in favorites])
+        self.resout.write("{},{},{},{}\n".format(authorID, storyID,self.fold,score))
         return score
         
     def evaluate_model(self, modelfile="/export/apps/dev/fanfiction/models/lda1p_0.93_k5_a1.0_enil.model"):
@@ -550,11 +554,12 @@ class OnlineLDAExperiment():
             #topicmatrix = self.reduce_matrix(thematrix)
             # OK now I have a topic matrix of favorites for this reader
 
-    def run_lda_on_summaries(self, n_topics=50, alpha='auto', eta='auto'):
+    def run_lda_on_summaries(self, n_topics=50, alpha='auto', eta='auto', train=None):
         if os.path.exists("{}/models/summaries_1p.dict".format(self.basedir)):
             logging.info("Loading dictionary from file")
             self.dictionary = corpora.Dictionary.load("{}/models/summaries_1p.dict".format(self.basedir))
         else:
+            sqlite3.connect("{}/fanfiction_no_reviews.db".format(basedir))
             conn = sqlite3.connect("{}/fanfiction_no_reviews.db".format(self.basedir))
             
             # Change this if using folds
@@ -599,15 +604,15 @@ class OnlineLDAExperiment():
             logging.warn("I assume you don't want to overwrite it.")
             logging.warn("If in fact you do, please move the existing file out of the way.")
             return modelfile
-        if os.path.exists("{}/models/summaries_1p.mm".format(self.basedir)):
+        if os.path.exists("{}/models/summaries_1p_train.mm".format(self.basedir)):
             logging.info("Loading corpus from disk")
-            corpus = corpora.MmCorpus('{}/models/summaries_1p.mm'.format(self.basedir))
+            corpus = corpora.MmCorpus('{}/models/summaries_1p_train.mm'.format(self.basedir))
             #corpus = [dictionary.doc2bow(text) for text in summaries]
         else:
             logging.info("Creating corpus to generate summaries as bags of words")
-            corpus = FanFictionCorpus(self.dictionary)
+            corpus = FanFictionCorpus(self.dictionary, train)
             logging.info("Saving corpus to disk")
-            corpora.MmCorpus.serialize('{}/models/summaries_1p.mm'.format(self.basedir), corpus)
+            corpora.MmCorpus.serialize('{}/models/summaries_1p_train.mm'.format(self.basedir), corpus)
         
         logging.info("Training model from corpus")
         self.lda = models.ldamodel.LdaModel(corpus=corpus, alpha=alpha, eta=eta, id2word=self.dictionary, num_topics=n_topics, update_every=1, chunksize=20000, passes=1)
@@ -620,13 +625,14 @@ class OnlineLDAExperiment():
 class StoryTextCorpus():
     def __init__(self, dictionary, basedir="/export/apps/dev/fanfiction"):
         self.dictionary = dictionary
+        self.basedir=basedir
     
     def __iter__(self):    
         conn = sqlite3.connect("{}/fanfiction_no_reviews.db".format(self.basedir))
         logging.info("loading ids from database")
         c=conn.execute("SELECT id, chapters FROM stories WHERE language='English'")
         logging.info("loading text from the, um, inter-net")
-        t=Topic("T")
+        t=Topic(basedir)
         for row in c:
             if row[0] is not None:
                 story_text = get_story_text(row[0], int(row[1]))
@@ -634,19 +640,20 @@ class StoryTextCorpus():
                 yield bow
         
 class FanFictionCorpus():
-    def __init__(self, dictionary, basedir="/export/apps/dev/fanfiction"):
+    def __init__(self, dictionary, train=None, basedir="/export/apps/dev/fanfiction"):
         self.name = "Fan Fiction Corpus (c) 2015"
         self.dictionary = dictionary
         self.basedir=basedir
+        self.train = train
         
     def __iter__(self):
         conn = sqlite3.connect("{}/fanfiction_no_reviews.db".format(self.basedir))
         logging.info("loading summaries from database")
-        c=conn.execute("SELECT (name || ' ' || summary) as abstract FROM stories WHERE language='English'")
-        t = Topic("T")
+        c=conn.execute("SELECT id, (name || ' ' || summary) as abstract FROM stories WHERE language='English'")
+        t = Topic(self.basedir)
         for row in c:
-            if row[0] is not None:
-                summary = ('{}'.format(row[0])).strip()
+            if self.train is not None and row[0] in self.train and row[1] is not None:
+                summary = ('{}'.format(row[1])).strip()
                 bow = self.dictionary.doc2bow(t.tokenize(summary))
                 #[w for w in t.tokenize(summary.strip()) if w not in t.stopwords]
                 yield bow

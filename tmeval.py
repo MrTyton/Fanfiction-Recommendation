@@ -10,9 +10,33 @@ import traceback
 import topic
 
 __all__ = []
-__version__ = 0.98
+__version__ = 0.99
 __date__ = '2015-11-20'
-__updated__ = '2015-12-03'
+__updated__ = '2015-12-05'
+
+def get_stories_from_folds(numfolds=5, fold=0, testflag=False, datadir="/export/apps/dev/fanfiction"):
+    with sqlite3.connect("{}/fanfiction_no_reviews.db".format(datadir)) as conn:
+        c = conn.cursor()
+        c.execute("SELECT DISTINCT authorID FROM author_favorites")
+        authorIDs = [x[0] for x in c.fetchall()]
+    train = set()
+    for fold in range(numfolds):
+        logging.info("Training from fold {} - {} in set so far".format(fold, len(train)))
+        with sqlite3.connect("{}/author_splits_{}.db".format(datadir, fold)) as conn:
+            for cur in authorIDs:
+        #total = {}
+                c = conn.cursor()
+                if testflag:
+                    sql="SELECT output FROM author_output_splits_%d WHERE authorID = %d" % (fold, cur)
+                else:
+                    sql="SELECT input FROM author_insert_splits_%d WHERE authorID = %d" % (fold, cur)
+                c.execute(sql); favorites = sorted([x[0] for x in c.fetchall()])
+                if len(favorites)==0:
+                    #logging.error("There are no favorites for author={}. Skipping.".format(cur))
+                    continue
+                train.update(favorites)
+    logging.info("Found {} story summaries to use".format(len(train)))
+    return list(train)
 
 def main(argv=None): # IGNORE:C0111
     '''Command line options.'''
@@ -57,16 +81,17 @@ USAGE
         '''
         
         '''
-        ole = topic.OnlineLDAExperiment(int(args.k), args.basedir)
+        ole = topic.OnlineLDAExperiment(int(args.k), basedir=args.basedir)
         if args.modelfile is None:
-            modelfile=ole.run_lda_on_summaries(int(args.k), args.alpha, args.eta)
+            train = get_stories_from_folds()
+            modelfile=ole.run_lda_on_summaries(int(args.k), args.alpha, args.eta, train=train)
         else:
             modelfile = args.modelfile
         #ole.evaluate_model(modelfile)
         #To evaluate, do something like...
         
-        oleg = topic.OnlineLDAExperiment(int(args.k), args.basedir, modelfile=modelfile)
-        oleg.run_lda_on_summaries(int(args.k), args.alpha, args.eta)
+        oleg = topic.OnlineLDAExperiment(int(args.k), basedir=args.basedir, modelfile=modelfile)
+        logging.info("Training complete. Evaluating {}".format(modelfile))
         oleg.prep_for_eval(int(args.fold))
         eval = evaluator.Evaluator(oleg, datadir=args.basedir, resultsdir="{}/results".format(args.basedir)) # implements/overrides favorite_likelihood(self, storyID, favorites)
         eval.evaluate()
