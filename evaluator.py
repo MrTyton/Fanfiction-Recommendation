@@ -25,6 +25,11 @@ class Evaluator():
 		else:
 			self.authorIDs = authorIDs
 			
+		with sqlite3.connect("/users/jegang/fanfiction_no_reviews.db") as conn:
+			c = conn.cursor()
+			c.execute("SELECT COUNT(DISTINCT id) FROM stories")
+			self.num_all = c.fetchone()[0]
+			
 	def evaluate(self):
 		results = {}
 		for cur in self.authorIDs:
@@ -55,17 +60,21 @@ class Evaluator():
 			with sqlite3.connect("/users/jegang/author_splits_%d.db" % self.fold) as conn:
 				c = conn.cursor()
 				c.execute("SELECT output FROM author_output_splits_%d WHERE authorID = %d" % (self.fold, cur)); heldout = sorted([x[0] for x in c.fetchall()])
+
 			ranks = []
+			
+			#num_all = len(total_no_ranks)
 			for x in heldout:
 				try:
-					ind = total_no_ranks.index(x)
+					ind = total_no_ranks.index(x) +1
 				except Exception as e:
-					ind = len(total_no_ranks)
-				ranks.append((x, ind))
+					ind = self.num_all
+				ranks.append((cur, x, self.fold, ind, self.num_all))
 		#for auth in results:
 			with open("../results/%d_split_%d.csv" % (cur, self.fold), "w") as fp:
 				w = csv.writer(fp)#, results[cur].keys())
 				#w.writeheader()
+				w.writerow(["Author", "Story", "Fold", "Rank", "Total number of Stories"])
 				w.writerows(ranks)
 				
 				
@@ -176,9 +185,9 @@ if __name__ == "__main__":
 	value = int(sys.argv[1])-1
 	fold = int(sys.argv[2])
 	with open("../authors.pkl", "r") as fp:
-		author = pickle.load(fp)[value]
+		authors = pickle.load(fp)[value*1408:(value+1)*1408]
 	#base = base_cf(fold)
 	with open("/users/jegang/svd_0.pkl", "r") as fp:
 		SVD = pickle.load(fp)
-	eval = Evaluator(SVD, authorIDs=[author], split=fold)
+	eval = Evaluator(SVD, authorIDs=authors, split=fold)
 	eval.evaluate()
