@@ -48,14 +48,25 @@ class Evaluator():
 			
 			total = self.recommender.compute_all(favorites)
 			if total is None:
-				total = {stor:self.recommender.favorite_likelihood(stor,favorites) for stor in toDo}
+				total = [[stor,self.recommender.favorite_likelihood(stor,favorites)] for stor in toDo]
 			#results[cur] = total
-		
+			total = sorted(total, key = lambda x:x[1], reverse=True)
+			total_no_ranks = [x[0] for x in total]
+			with sqlite3.connect("/users/jegang/author_splits_%d.db" % self.fold) as conn:
+				c = conn.cursor()
+				c.execute("SELECT output FROM author_output_splits_%d WHERE authorID = %d" % (self.fold, cur)); heldout = sorted([x[0] for x in c.fetchall()])
+			ranks = []
+			for x in heldout:
+				try:
+					ind = total_no_ranks.index(x)
+				except Exception as e:
+					ind = len(total_no_ranks)
+				ranks.append((x, ind))
 		#for auth in results:
 			with open("../results/%d_split_%d.csv" % (cur, self.fold), "w") as fp:
 				w = csv.writer(fp)#, results[cur].keys())
 				#w.writeheader()
-				w.writerows(total)
+				w.writerows(ranks)
 				
 				
 class base_cf():
@@ -162,7 +173,7 @@ class svd():
 		
 		
 if __name__ == "__main__":
-	value = int(sys.argv[1])
+	value = int(sys.argv[1])-1
 	fold = int(sys.argv[2])
 	with open("../authors.pkl", "r") as fp:
 		author = pickle.load(fp)[value]
