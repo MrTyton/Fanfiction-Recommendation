@@ -36,7 +36,7 @@ def get_stories_from_folds(numfolds=5, fold=0, testflag=False, datadir="/export/
                     continue
                 train.update(favorites)
     logging.info("Found {} story summaries to use".format(len(train)))
-    return train
+    return sorted(list(train))
 
 def main(argv=None): # IGNORE:C0111
     '''Command line options.'''
@@ -93,7 +93,7 @@ USAGE
         oleg = topic.OnlineLDAExperiment(int(args.k), basedir=args.basedir, modelfile=modelfile)
         logging.info("Training complete. Evaluating {}".format(modelfile))
         oleg.prep_for_eval(int(args.fold))
-        eval = evaluator.Evaluator(oleg, datadir=args.basedir, full=True, resultsdir="{}/results2".format(args.basedir)) # implements/overrides favorite_likelihood(self, storyID, favorites)
+        eval = evaluator.Evaluator(oleg, datadir=args.basedir, full=True, resultsdir="{}/results3".format(args.basedir)) # implements/overrides favorite_likelihood(self, storyID, favorites)
         eval.evaluate()
         #(in parallel)...
         #for each reader (author): 
