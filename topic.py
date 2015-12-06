@@ -20,7 +20,7 @@ from _sqlite3 import Cursor
 from sympy.mpmath.calculus.extrapolation import fold_finite
 
 __all__ = []
-__version__ = 0.99
+__version__ = 1.01
 __date__ = '2015-11-20'
 __updated__ = '2015-12-05'
 
@@ -604,15 +604,15 @@ class OnlineLDAExperiment():
             logging.warn("I assume you don't want to overwrite it.")
             logging.warn("If in fact you do, please move the existing file out of the way.")
             return modelfile
-        if os.path.exists("{}/models/summaries_1p_train.mm".format(self.basedir)):
+        if os.path.exists("{}/models/summaries_1p_train2.mm".format(self.basedir)):
             logging.info("Loading corpus from disk")
-            corpus = corpora.MmCorpus('{}/models/summaries_1p_train.mm'.format(self.basedir))
+            corpus = corpora.MmCorpus('{}/models/summaries_1p_train2.mm'.format(self.basedir))
             #corpus = [dictionary.doc2bow(text) for text in summaries]
         else:
             logging.info("Creating corpus to generate summaries as bags of words")
             corpus = FanFictionCorpus(self.dictionary, train)
             logging.info("Saving corpus to disk")
-            corpora.MmCorpus.serialize('{}/models/summaries_1p_train.mm'.format(self.basedir), corpus)
+            corpora.MmCorpus.serialize('{}/models/summaries_1p_train2.mm'.format(self.basedir), corpus)
         
         logging.info("Training model from corpus")
         self.lda = models.ldamodel.LdaModel(corpus=corpus, alpha=alpha, eta=eta, id2word=self.dictionary, num_topics=n_topics, update_every=1, chunksize=20000, passes=1)
@@ -651,8 +651,16 @@ class FanFictionCorpus():
         logging.info("loading summaries from database")
         c=conn.execute("SELECT id, (name || ' ' || summary) as abstract FROM stories WHERE language='English'")
         t = Topic(self.basedir)
-        for row in c:
-            if self.train is not None and row[0] in self.train and row[1] is not None:
+        
+        if self.train is not None:
+            logging.info("Filtering for training")
+            data = [(row[0], row[1]) for row in c if row[0] in self.train]
+        else:
+            logging.info("Tuplizing total set of summaries")
+            data = [(row[0], row[1]) for row in c if row[0]]
+        conn.close()
+        for row in data:
+            if row[0] in data:
                 summary = ('{}'.format(row[1])).strip()
                 bow = self.dictionary.doc2bow(t.tokenize(summary))
                 #[w for w in t.tokenize(summary.strip()) if w not in t.stopwords]
