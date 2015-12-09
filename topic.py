@@ -375,7 +375,6 @@ class VariationalEM():
         self.topic_model.write_dimensions(vocab, storymap)
         self.topic_model.fit_model(thematrix, vocab, storymap, n_topics=k, n_iter=iter, alpha=alpha, eta=eta)
 
-'''
 class OnlineLDAExperiment():
     def __init__(self, numtopics=150, modelfile=None, basedir="/export/apps/dev/fanfiction"):
         self.basedir=basedir
@@ -399,6 +398,12 @@ class OnlineLDAExperiment():
         else:
             self.resout = open("{}/results/results_k{}_{}_{}.txt".format(self.basedir,self.numtopics, fold, auth), "w")
         '''
+        
+    def prep_for_eval(self, fold, penalty=20):
+        self.fold = fold
+        self.penalty=penalty
+        self.resout = open("{}/results/results_k{}_{}.txt".format(self.basedir,self.numtopics, fold), "a")
+        
     def populate(self,favorites):
         if favorites and len(favorites)>0:
             self.mean_vector= np.average([[self.get_topic_vector_for_story(fav)] for fav in favorites], axis=0)
