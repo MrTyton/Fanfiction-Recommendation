@@ -395,7 +395,8 @@ class OnlineLDAExperiment():
         
     def populate(self,favorites):
         if favorites and len(favorites)>0:
-            self.mean_vector= np.average([[self.get_topic_vector_for_story(fav)] for fav in favorites], axis=0)
+            favmx=[self.get_topic_vector_for_story(fav) for fav in favorites]
+            self.mean_vector= np.average([x for x in favmx if len(x)==self.numtopics], axis=0)
         else:
             self.mean_vector=[]
     
@@ -435,7 +436,7 @@ class OnlineLDAExperiment():
         else:
             rows = [x for x in c]
             if len(rows)==0:
-                logging.debug("No record for story ID={}????".format(storyID))
+                logging.debug("No record for story ID={}... Is it in English????".format(storyID))
                 return []
             row = rows[0]
             summary = row[0].strip()
