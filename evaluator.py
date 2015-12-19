@@ -14,7 +14,7 @@ class Evaluator():
 		if storyIDs is None:
 			with sqlite3.connect("{}/fanfiction_no_reviews.db".format(self.datadir)) as conn:
 				c = conn.cursor()
-				c.execute("SELECT DISTINCT storyID FROM author_favorites") if not full else c.execute("SELECT id FROM stories WHERE language='English'")
+				c.execute("SELECT DISTINCT storyID FROM author_favorites") if not full else c.execute("SELECT id FROM stories")
 				self.storyIDs = [x[0] for x in c.fetchall()]
 		else:
 			self.storyIDs = storyIDs
@@ -74,11 +74,12 @@ class Evaluator():
 
 			ranks = []
 			
-			#num_all = len(total_no_ranks)
+			self.num_all = len(total_no_ranks)
 			for x in heldout:
 				try:
 					ind = total_no_ranks.index(x) +1
 				except Exception as e:
+					print e
 					ind = self.num_all
 				ranks.append((cur, x, self.fold, ind, len(total)))
 		#for auth in results:

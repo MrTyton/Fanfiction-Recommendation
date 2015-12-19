@@ -9,6 +9,7 @@ import string
 import time
 import traceback
 from operator import itemgetter
+import math
 
 from gensim import corpora, models
 import lda
@@ -21,11 +22,12 @@ from _sqlite3 import Cursor
 from sympy.mpmath.calculus.extrapolation import fold_finite
 import math
 import operator
+from blaze.expr.math import isnan
 
 __all__ = []
-__version__ = 1.02
+__version__ = 1.03
 __date__ = '2015-11-20'
-__updated__ = '2015-12-05'
+__updated__ = '2015-12-18'
 
 def dot_product2(v1, v2):
     return sum(map(operator.mul, v1, v2))
@@ -396,7 +398,12 @@ class OnlineLDAExperiment():
     def populate(self,favorites):
         if favorites and len(favorites)>0:
             favmx=[self.get_topic_vector_for_story(fav) for fav in favorites]
-            self.mean_vector= np.average([x for x in favmx if len(x)==self.numtopics], axis=0)
+            stockfavs = [x for x in favmx if len(x)==self.numtopics]
+            #logging.info("Computing mean vector from {} of {} favorite story vectors.".format(len(stockfavs),len(favorites)))
+            if len(stockfavs)==0:
+                self.mean_vector = []
+            else:
+                self.mean_vector= np.average(stockfavs, axis=0)
         else:
             self.mean_vector=[]
     
@@ -410,13 +417,31 @@ class OnlineLDAExperiment():
 
     
     def similarity(self, u, v):
-        return 1 - spatial.distance.cosine(u,v)
+        if len(u) != len(v):
+            logging.error("Misshaped vectors: {} <> {}".format(len(u), len(v)))
+            return 0.0
+        cosdist=spatial.distance.cosine(np.array(u),np.array(v))
+        if math.isnan(cosdist):
+            baddies = [x for x in u if math.isnan(x)]
+            if len(baddies)>0:
+                logging.error("You gave me a vector with {} bad entries.".format(len(baddies)))
+            #else:
+                #logging.warn("Cosine distance is not a number - vectors both have length {}.".format(len(u)))
+                #logging.info("u: {}".format(u))
+                #logging.info("v: {}".format(v))
+            return 0.0
+        #else:
+        #    logging.info("Hooray!!")
+        cossim = 1 - cosdist 
+        return cossim
     
     def tokenize(self, text):
         return [x for x in word_tokenize(text.lower()) if x not in self.stopwords]
     
     def topic_map_to_vector(self, topic_map, k=100):
         story_topic_vector = []
+        #if len(topic_map)==0:
+        #    logging.warn("No topics found, vector will be zeros.")
         for i in range(k):
             if i in topic_map:
                 story_topic_vector.append(topic_map[i])
@@ -436,12 +461,13 @@ class OnlineLDAExperiment():
         else:
             rows = [x for x in c]
             if len(rows)==0:
-                logging.debug("No record for story ID={}... Is it in English????".format(storyID))
+                logging.warn("No record for story ID={}... Is it in English????".format(storyID))
                 return []
             row = rows[0]
             summary = row[0].strip()
             if summary:
                 story_word_counts = self.dictionary.doc2bow(self.tokenize(summary))
+                logging.info("SWC({}): {}".format(storyID, story_word_counts))
                 story_topic_proportions = dict((x,y) for (x,y) in self.lda[story_word_counts])
                 story_topic_vector = self.topic_map_to_vector(story_topic_proportions, int(self.numtopics))
                 self.story_vector_cache[storyID] = story_topic_vector
@@ -456,22 +482,29 @@ class OnlineLDAExperiment():
       returns - 0.000 - 1.000, representing likelihood that the story is a favorite, given list of favorites. 
     '''
     def favorite_likelihood(self, authorID, storyID, favorites):
+        debug = storyID==2175412
+        if self.mean_vector is None or len(self.mean_vector)==0:
+            if debug:
+                logging.warn("Mean vector is [], returning 0.0")
+            return 0.0
         story_topic_vector = self.get_topic_vector_for_story(storyID)
         if story_topic_vector is None or len(story_topic_vector)==0:
             #logging.debug("No vector for storyID={}".format(storyID))
-            return 0.0
-        if self.mean_vector is None or len(self.mean_vector)==0:
+            if debug:
+                logging.warn("Story vector is [], returning 0.0")
             return 0.0
         #logging.debug("favorite_lh({}, {})".format(storyID, favorites))
+        if debug:
+            logging.warn("Returning similarity to mean_vector")
         score = self.similarity(story_topic_vector, self.mean_vector)
         #score = max([self.similarity(story_topic_vector, self.get_topic_vector_for_story(fav)) for fav in favorites])
         #self.resout.write("{},{},{},{}\n".format(authorID, storyID,self.fold,score))
         return score
 
     def load_dictionary(self):
-        if os.path.exists("{}/models/summaries_1p.dict".format(self.basedir)):
+        if os.path.exists("{}/models/summaries_1p_{}.dict".format(self.basedir,__version__)):
             logging.info("Loading dictionary from file")
-            self.dictionary = corpora.Dictionary.load("{}/models/summaries_1p.dict".format(self.basedir))
+            self.dictionary = corpora.Dictionary.load("{}/models/summaries_1p_{}.dict".format(self.basedir,__version__))
         else:
             sqlite3.connect("{}/fanfiction_no_reviews.db".format(self.basedir))
             conn = sqlite3.connect("{}/fanfiction_no_reviews.db".format(self.basedir))
@@ -493,33 +526,34 @@ class OnlineLDAExperiment():
             
             #dictionary = corpora.Dictionary(summaries)
             logging.info("Writing dictionary to file")
-            self.dictionary.save('{}/models/summaries_1p.dict'.format(self.basedir));
+            self.dictionary.save('{}/models/summaries_1p_{}.dict'.format(self.basedir,__version__));
         
                 
     def evaluate_model(self, modelfile="/export/apps/dev/fanfiction/models/lda1p_0.93_k5_a1.0_enil.model"):
-        logging.info("Loading model from file")
+        logging.info("Loading model from file {} for evaluation.".format(modelfile))
         lda = models.ldamodel.LdaModel.load(modelfile)
         modelfilesfx = "_".join(modelfile.split("/")[-1].split(".model")[0].split("_")[1:])
         k = int(modelfilesfx.split("_")[1][1:])
         logging.info("Suffix = _{}; K={}".format(modelfilesfx, k))
-        logging.info("Loading dictionary from file")
-        self.dictionary = corpora.Dictionary.load("{}/models/summaries_1p.dict".format(self.basedir))
+        if not self.dictionary or self.dictionary is None:
+            logging.info("Loading dictionary from file")
+            self.dictionary = corpora.Dictionary.load("{}/models/summaries_1p_{}.dict".format(self.basedir, __version__))
         if os.path.exists("{}/models/summaries_topics_{}.mm".format(self.basedir, modelfilesfx)):
             logging.info("Loading corpus from disk")
             corpus = corpora.MmCorpus('{}/models/summaries_topics_{}.mm'.format(self.basedir, modelfilesfx))
-        elif os.path.exists("{}/models/summaries_1p.mm".format(self.basedir)):
+        elif os.path.exists("{}/models/summaries_1p_{}.mm".format(self.basedir,__version__)):
             logging.info("Loading corpus from disk")
-            corpus = corpora.MmCorpus('{}/models/summaries_1p.mm'.format(self.basedir))
+            corpus = corpora.MmCorpus('{}/models/summaries_1p_{}.mm'.format(self.basedir,__version__))
             logging.info("Writing corpus as topics to disk")
             corpora.MmCorpus.serialize('{}/models/summaries_topics_{}.mm'.format(self.basedir,modelfilesfx), lda[corpus])
             corpus = corpora.MmCorpus('{}/models/summaries_topics_{}.mm'.format(self.basedir, modelfilesfx))
         else:
             logging.info("Creating corpus to generate summaries as bags of words")
-            corpus = FanFictionCorpus(self.dictionary)
+            corpus = FanFictionCorpus(self.dictionary,basedir=self.basedir)
             logging.info("Writing corpus as topics to disk")
             corpora.MmCorpus.serialize('{}/models/summaries_topics_{}.mm'.format(self.basedir, modelfilesfx), lda[corpus])
             corpus = corpora.MmCorpus('{}/models/summaries_topics_{}.mm'.format(self.basedir, modelfilesfx))
-        conn = sqlite3.connect("/media/export/apps/dev/fanfiction/fanfiction_no_reviews.db")
+        conn = sqlite3.connect("{}/fanfiction_no_reviews.db".format(self.basedir))
         logging.info("selecting readers with at least 5 favorite stories")
         
         # Select 100 readers  
@@ -552,9 +586,16 @@ class OnlineLDAExperiment():
                 summary = row[1].strip()
                 if summary:
                     story_word_counts = self.dictionary.doc2bow(self.tokenize(summary))
-                    story_topic_proportions = dict((x,y) for (x,y) in lda[story_word_counts])
-                    story_topic_vector = self.topic_map_to_vector(story_topic_proportions, int(k))
+                    #logging.info("SWC({}): {}".format(row[0], story_word_counts))
                     
+                    story_topic_proportions = dict((x,y) for (x,y) in lda[story_word_counts])
+                    if len(story_topic_proportions)==0:
+                        continue
+                    logging.info("LDA model succeeded to assign topics to summary ({} unique words).".format(len(story_word_counts)))
+                    story_topic_vector = self.topic_map_to_vector(story_topic_proportions, int(k))
+                    if story_topic_vector is None or len(story_topic_vector)!=self.numtopics:
+                        logging.error("Could not obtain training story topic vector for story {}.".format(row[0]))
+                        continue
                     thematrix.append(story_topic_vector)
             heldoutvectors = []
             for row in heldout:
@@ -563,7 +604,11 @@ class OnlineLDAExperiment():
                 if summary:
                     story_word_counts = self.dictionary.doc2bow(self.tokenize(summary))
                     story_topic_proportions = dict((x,y) for (x,y) in lda[story_word_counts])
-                    heldoutvectors.append(self.topic_map_to_vector(story_topic_proportions, k))
+                    story_topic_vector = self.topic_map_to_vector(story_topic_proportions, int(k))
+                    if story_topic_vector is None or len(story_topic_vector)!=self.numtopics:
+                        logging.error("Could not obtain held out story topic vector for story {}.".format(row[0]))
+                        continue
+                    heldoutvectors.append(story_topic_vector)
             # Choose the most similar favorite story
             # to use for ranking
             logging.debug("Scanning 10,000 stories from corpus")
@@ -572,29 +617,37 @@ class OnlineLDAExperiment():
             for vector in corpus:
                 #logging.info("Compare {} to {}".format(vector, thematrix[0]))
                 story_topic_proportions = dict((x,y) for (x,y) in vector)
+                if thematrix is None or len(thematrix)==0:
+                    scores.append(0.0)
+                    continue
                 score = max([self.similarity(self.topic_map_to_vector(story_topic_proportions, k), fav) for fav in thematrix])
                 scores.append(score)
                 doccount+=1
                 if doccount % 10000 == 0 :
                     break
+                
             logging.info("Scan complete; {} story summaries scanned. Sorting scores".format(doccount))
             scores.sort(reverse=True)
-            logging.debug("Sorting complete. ")
+            logging.info("Sorting complete. High score in first {} stories is {:.3f}".format(doccount,scores[0]))
             # Now check the heldout
             rrarr=[]
             logging.info("Comparing held out set to favorites.")
             for heldoutvec in heldoutvectors:
                 evalscores=[self.similarity(heldoutvec, fav) for fav in thematrix]
-                score = max(evalscores)
-                
+                if evalscores is None or len(evalscores)==0:
+                    score =0.0
+                else:
+                    score = max(evalscores)
+                    logging.info("Held out score: {:.3f}".format(score))
                 i=0
-                while scores[i]>=score and i<len(scores):
+                while i<len(scores) and scores[i]>=score:
                     i=i+1 
                 rrarr.append(1.0/(float(i+1)))
-            rdrmrr = np.average(rrarr)
-            logging.info("Reader {}: MRR={:.5e}".format(reader, rdrmrr))
+            
+            rdrmrr = max(rrarr)
+            logging.info("Reader {}: RR={:.5e}".format(reader, rdrmrr))
             mrrs.append(rdrmrr)
-        mrr=np.average(mrrs)
+        mrr=np.mean(mrrs)
         c.close()
         conn.close()
         logging.info("Overall Results (MRR): {:.4e}".format(mrr))
@@ -629,15 +682,15 @@ class OnlineLDAExperiment():
             logging.warn("I assume you don't want to overwrite it.")
             logging.warn("If in fact you do, please move the existing file out of the way.")
             return modelfile
-        if os.path.exists("{}/models/summaries_1p_train3.mm".format(self.basedir)):
+        if os.path.exists("{}/models/summaries_1p_train_{}.mm".format(self.basedir,__version__)):
             logging.info("Loading corpus from disk")
-            corpus = corpora.MmCorpus('{}/models/summaries_1p_train3.mm'.format(self.basedir))
+            corpus = corpora.MmCorpus('{}/models/summaries_1p_train_{}.mm'.format(self.basedir,__version__))
             #corpus = [dictionary.doc2bow(text) for text in summaries]
         else:
             logging.info("Creating corpus to generate summaries as bags of words")
-            corpus = FanFictionCorpus(self.dictionary, train)
+            corpus = FanFictionCorpus(self.dictionary, train, basedir=self.basedir)
             logging.info("Saving corpus to disk")
-            corpora.MmCorpus.serialize('{}/models/summaries_1p_train3.mm'.format(self.basedir), corpus)
+            corpora.MmCorpus.serialize('{}/models/summaries_1p_train_{}.mm'.format(self.basedir,__version__), corpus)
         
         logging.info("Training model from corpus")
         self.lda = models.ldamodel.LdaModel(corpus=corpus, alpha=alpha, eta=eta, id2word=self.dictionary, num_topics=n_topics, update_every=1, chunksize=20000, passes=1)
@@ -733,7 +786,7 @@ def get_connection(basedir="/export/apps/dev/fanfiction"):
 def scrape_stories(storyIDs=None):
     basedir = "/export/apps/dev/fanfiction"
     logging.info("Loading dictionary from file")
-    dictionary = corpora.Dictionary.load("{}/models/summaries_1p.dict".format(basedir))
+    dictionary = corpora.Dictionary.load("{}/models/summaries_1p_{}.dict".format(basedir,__version__))
     logging.info("Creating corpus to generate stories as bags of words")
     corpus = StoryTextCorpus(dictionary)
     logging.info("Writing corpus as topics to disk")

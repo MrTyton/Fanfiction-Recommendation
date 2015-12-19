@@ -2,6 +2,11 @@ import csv
 from os import listdir
 from os.path import isfile, join
 import numpy as np
+import itertools
+
+def recall_at(ranks, at=1000):
+	recall = float(len([rank for rank in ranks if rank<=at]))/float(len(ranks))
+	return recall
 
 def calculate(mypath, split):
 	onlyfiles = [f for f in listdir(mypath) if isfile(join(mypath, f))]
@@ -22,25 +27,34 @@ def calculate(mypath, split):
 				authorID = row[0]
 				if authorID in authors:
 					# appending index of favorite from heldout
-					if rank<authors[authorID]:
-						authors[authorID]=rank
+					authors[authorID].append(rank)
 				else:
-					authors[authorID] = rank
+					authors[authorID] = [rank]
 	
-	ranks = [authors[x] for x in authors]
+	ranks = [np.min(authors[x]) for x in authors]
 	rrs = [1./rank for rank in ranks]
-	
 	mrr = np.mean(rrs)
 	mrr_sd = np.std(rrs)
 	
-	return mrr,mrr_sd,ranks
+	allranks = []
+	for x in authors:
+		allranks.extend(authors[x])
+	recalls = [recall_at(allranks,cutoff) for cutoff in range(0,100000,1000)]
+	return mrr,mrr_sd,recalls,ranks
 	# mrr = compute_MRR(ranks)
 	# print authors
 	#for cur in authors:
 	#	ranks.append(compute_MRR(authors[cur]))
 	#return sum(ranks) / float(len(ranks)), ranks
 
-MRR,mrr_sd, ranks = calculate("/export/apps/dev/fanfiction/results",0)
-print MRR
-print mrr_sd
-print ranks
+def print_results(exp,loc,fold=0):
+	
+	MRR,mrr_sd,recalls, ranks = calculate(loc,fold)
+	
+	print("{} {:.3f}, {:.3f}, {:.3f}, {:.3f}, {:.3f}".format(exp,MRR, mrr_sd,recalls[1],recalls[49],recalls[99]))
+
+print("Exp.,  MRR,  SD,    R@1k,  R@50k, R@100k")
+print_results("CF   ", "/export/apps/dev/fanfiction/results4/all_results/results_cf")
+print_results("SVD  ","/export/apps/dev/fanfiction/results4/all_results/results_svd")
+print_results("COS  ","/export/apps/dev/fanfiction/results4/all_results/results_cos")
+print_results("LDA  ","/export/apps/dev/fanfiction/results4/all_results/results_lda_filtered")

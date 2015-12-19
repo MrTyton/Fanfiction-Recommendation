@@ -1,18 +1,19 @@
+import logging
+logging.basicConfig(format='%(asctime)s %(message)s', datefmt='%m/%d %I:%M:%S %p', level=logging.INFO)
 import sqlite3
 import csv
 import sys
 import pickle
 import evaluator
 import argparse
-import logging
 import os
 import traceback
 import topic
 
 __all__ = []
-__version__ = 0.99
+__version__ = 1.03
 __date__ = '2015-11-20'
-__updated__ = '2015-12-05'
+__updated__ = '2015-12-18'
 
 def get_stories_from_folds(numfolds=5, fold=0, testflag=False, datadir="/export/apps/dev/fanfiction"):
     with sqlite3.connect("{}/fanfiction_no_reviews.db".format(datadir)) as conn:
@@ -44,7 +45,6 @@ def main(argv=None): # IGNORE:C0111
         argv = sys.argv
     else:
         sys.argv.extend(argv)
-    logging.basicConfig(format='%(asctime)s %(message)s', datefmt='%m/%d %I:%M:%S %p', level=logging.INFO)
     program_name = os.path.basename(sys.argv[0])
     program_version = "v%s" % __version__
     program_build_date = str(__updated__)

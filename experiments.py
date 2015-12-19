@@ -1,15 +1,16 @@
+import logging
+logging.basicConfig(format='%(asctime)s %(message)s', datefmt='%m/%d %I:%M:%S %p', level=logging.INFO)
 import sys
 import os
-import logging
 import traceback
 import argparse
 
 import topic
 
 __all__ = []
-__version__ = 0.97
+__version__ = 1.03
 __date__ = '2015-11-20'
-__updated__ = '2015-12-03'
+__updated__ = '2015-12-18'
 
 def main(argv=None): # IGNORE:C0111
     '''Command line options.'''
@@ -17,7 +18,7 @@ def main(argv=None): # IGNORE:C0111
         argv = sys.argv
     else:
         sys.argv.extend(argv)
-    logging.basicConfig(format='%(asctime)s %(message)s', datefmt='%m/%d %I:%M:%S %p', level=logging.INFO)
+    
     program_name = os.path.basename(sys.argv[0])
     program_version = "v%s" % __version__
     program_build_date = str(__updated__)
@@ -52,12 +53,12 @@ USAGE
         '''
         
         '''
-        ole = topic.OnlineLDAExperiment(int(args.k), args.basedir)
+        ole = topic.OnlineLDAExperiment(int(args.k), basedir=args.basedir)
         if args.modelfile is None:
             modelfile=ole.run_lda_on_summaries(int(args.k), args.alpha, args.eta)
         else:
             modelfile = args.modelfile
-            ole.evaluate_model(modelfile)
+        ole.evaluate_model(modelfile)
         '''
         To evaluate, do something like...
         
